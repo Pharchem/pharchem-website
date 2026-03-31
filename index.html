@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="description" content="Pharchem Private Limited - Leading manufacturer of Aluminium Hydroxide Gel Paste and Magnesium Hydroxide Paste.">
+    <meta name="description" content="Pharchem Private Limited - Leading manufacturer of Aluminium Hydroxide Gel Paste and Magnesium Hydroxide Paste for Antacids and Lake Colors.">
     <title>Pharchem Private Limited | Leading Manufacturer of ALP & MGP</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
@@ -12,10 +12,11 @@
         html { scroll-behavior: smooth; }
         .partner-card { background: #ffffff; border: 1px solid #e2e8f0; padding: 1.5rem; border-radius: 1rem; transition: all 0.3s; display: flex; flex-direction: column; height: 100%; text-align: center; justify-content: center; }
         .partner-card:hover { transform: translateY(-5px); box-shadow: 0 10px 25px -5px rgba(37, 99, 235, 0.15); border-color: #2563eb; }
+        .map-container { position: relative; padding-bottom: 60%; height: 0; overflow: hidden; border-radius: 1rem; margin-top: 1.5rem; }
+        .map-container iframe { position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: 0; }
         @keyframes pulse-green { 0% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.7); } 70% { box-shadow: 0 0 0 15px rgba(34, 197, 94, 0); } 100% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0); } }
         .whatsapp-float { animation: pulse-green 2s infinite; }
-        input, select, textarea { border: 1px solid #e2e8f0; padding: 0.75rem; border-radius: 0.5rem; width: 100%; outline: none; transition: border-color 0.2s; }
-        input:focus { border-color: #2563eb; }
+        input, select, textarea { border: 1px solid #e2e8f0; padding: 0.75rem; border-radius: 0.5rem; width: 100%; focus: outline-none; focus: border-blue-600; }
     </style>
 </head>
 <body class="bg-slate-50 text-slate-900 font-sans relative">
@@ -44,25 +45,84 @@
         </div>
     </nav>
 
-    <section id="partners" class="py-24 bg-slate-100">
-        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-            <h2 class="text-xs font-bold text-blue-600 uppercase tracking-[0.4em] mb-4">Industries We Serve</h2>
-            <h3 class="text-4xl font-bold text-blue-900 mb-16">Application-Specific Partnerships</h3>
-            
-            <div class="mb-12">
-                <p class="text-sm font-black text-slate-500 uppercase tracking-widest mb-8">Antacid Formulation Partners</p>
-                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    <div class="partner-card"><h4 class="text-xl font-black text-blue-900 mb-1">Pfizer</h4><p class="text-slate-500 text-xs font-bold uppercase">Gelusil, Mucaine</p></div>
-                    <div class="partner-card"><h4 class="text-xl font-black text-blue-900 mb-1">Abbott</h4><p class="text-slate-500 text-xs font-bold uppercase">Digene</p></div>
-                    <div class="partner-card"><h4 class="text-xl font-black text-blue-900 mb-1">Alkem Laboratories</h4><p class="text-slate-500 text-xs font-bold uppercase">Gastro-Intestinal Line</p></div>
+    <section class="hero-gradient h-[500px] flex items-center text-white">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="max-w-4xl">
+                <span class="inline-block bg-blue-600 text-xs font-bold px-3 py-1 rounded-full mb-4 uppercase tracking-widest">Global & Local Supplier | Since 1989</span>
+                <h1 class="text-5xl md:text-6xl font-extrabold mb-6 leading-tight">Leading Manufacturer of Aluminium Hydroxide Gel Paste and Magnesium Hydroxide Paste</h1>
+                <p class="text-xl text-blue-400 font-bold mb-8 uppercase tracking-wide">Supplying India and exporting to Dubai, Sri Lanka & Beyond</p>
+                <div class="flex space-x-4">
+                    <a href="Pharchem Brochure Final.pdf" download class="bg-white text-blue-900 px-8 py-4 rounded-lg font-bold hover:bg-slate-100 transition shadow-lg text-sm uppercase">Download Brochure</a>
+                    <a href="#contact" class="border-2 border-white px-8 py-4 rounded-lg font-bold hover:bg-white/10 transition text-sm uppercase text-white">Request Quote</a>
                 </div>
             </div>
-            
+        </div>
+    </section>
+
+    <section id="partners" class="py-24 bg-slate-100">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="text-center mb-16">
+                <h2 class="text-xs font-bold text-blue-600 uppercase tracking-[0.4em] mb-4">Industries We Serve</h2>
+                <h3 class="text-4xl font-bold text-blue-900">Application-Specific Partnerships</h3>
+            </div>
+
+            <div class="mb-20">
+                <div class="flex items-center mb-10">
+                    <div class="h-px bg-slate-300 flex-grow"></div>
+                    <span class="px-6 text-xl font-black text-slate-800 uppercase tracking-widest text-center">Antacid Formulation Partners</span>
+                    <div class="h-px bg-slate-300 flex-grow"></div>
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    <div class="partner-card">
+                        <h4 class="text-xl font-black text-blue-900 mb-1 uppercase tracking-wide">Pfizer</h4>
+                        <p class="text-slate-500 text-xs font-bold uppercase tracking-tighter">Manufacture: Gelusil, Mucaine</p>
+                    </div>
+                    <div class="partner-card">
+                        <h4 class="text-xl font-black text-blue-900 mb-1 uppercase tracking-wide">Abbott</h4>
+                        <p class="text-slate-500 text-xs font-bold uppercase tracking-tighter">Manufacture: Digene</p>
+                    </div>
+                    <div class="partner-card">
+                        <h4 class="text-xl font-black text-blue-900 mb-1 uppercase tracking-wide">Alkem Laboratories</h4>
+                        <p class="text-slate-500 text-xs font-bold uppercase tracking-tighter">Manufacture: Gastro-Intestinal Line</p>
+                    </div>
+                    <div class="partner-card">
+                        <h4 class="text-xl font-black text-blue-900 mb-1 uppercase tracking-wide">Macleods Pharmaceuticals</h4>
+                        <p class="text-slate-500 text-xs font-bold uppercase tracking-tighter">Manufacture: Antacid Suspensions</p>
+                    </div>
+                    <div class="partner-card">
+                        <h4 class="text-xl font-black text-blue-900 mb-1 uppercase tracking-wide">RPG Life Sciences</h4>
+                        <p class="text-slate-500 text-xs font-bold uppercase tracking-tighter">Manufacture: Pharmaceutical Formulations</p>
+                    </div>
+                    <div class="partner-card">
+                        <h4 class="text-xl font-black text-blue-900 mb-1 uppercase tracking-wide">ENICAR Pharmaceuticals</h4>
+                        <p class="text-slate-500 text-xs font-bold uppercase tracking-tighter">Manufacture: Milk of Magnesia, Laxatives</p>
+                    </div>
+                </div>
+            </div>
+
             <div>
-                <p class="text-sm font-black text-slate-500 uppercase tracking-widest mb-8">Lake Color Partners</p>
+                <div class="flex items-center mb-10">
+                    <div class="h-px bg-slate-300 flex-grow"></div>
+                    <span class="px-6 text-xl font-black text-slate-800 uppercase tracking-widest text-center">Lake Color Partners</span>
+                    <div class="h-px bg-slate-300 flex-grow"></div>
+                </div>
                 <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                    <div class="partner-card"><h4 class="text-lg font-black text-blue-900 mb-1">Roha Dyechem</h4><p class="text-slate-500 text-xs font-bold uppercase">Food Colors</p></div>
-                    <div class="partner-card"><h4 class="text-lg font-black text-blue-900 mb-1">Neelikon Food Dyes</h4><p class="text-slate-500 text-xs font-bold uppercase">Lake Colors</p></div>
+                    <div class="partner-card">
+                        <h4 class="text-lg font-black text-blue-900 mb-1 uppercase tracking-wide">Roha Dyechem</h4>
+                        <p class="text-slate-500 text-xs font-bold uppercase tracking-tighter">Natural & Synthetic Food Colors</p>
+                    </div>
+                    <div class="partner-card">
+                        <h4 class="text-lg font-black text-blue-900 mb-1 uppercase tracking-wide">Neelikon Food Dyes</h4>
+                        <p class="text-slate-500 text-xs font-bold uppercase tracking-tighter">Lake Colors & Iron Oxides</p>
+                    </div>
+                    <div class="partner-card">
+                        <h4 class="text-lg font-black text-blue-900 mb-1 uppercase tracking-wide">Akay Natural Ingredients</h4>
+                        <p class="text-slate-500 text-xs font-bold uppercase tracking-tighter">Spice Extracts & Natural Colors</p>
+                    </div>
+                    <div class="partner-card">
+                        <h4 class="text-lg font-black text-blue-900 mb-1 uppercase tracking-wide">Aayusharyan</h4>
+                        <p class="text-slate-500 text-xs font-bold uppercase tracking-tighter">Cosmetic & Reactive Dyes</p>
+                    </div>
                 </div>
             </div>
         </div>
@@ -70,10 +130,10 @@
 
     <section id="contact" class="py-24 bg-white">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <h2 class="text-4xl font-bold text-blue-900 mb-12 text-center">Inquiries & Operations</h2>
+            
             <div class="grid lg:grid-cols-2 gap-16">
-                
                 <div>
-                    <h2 class="text-3xl font-bold text-blue-900 mb-10">Inquiries & Operations</h2>
                     <div class="space-y-10">
                         <a href="https://www.google.com/maps/search/?api=1&query=Pharchem+Private+Limited+MIDC+Tarapur" target="_blank" class="flex items-start space-x-6 group transition">
                             <div class="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center flex-shrink-0 group-hover:bg-blue-600 transition">
@@ -89,36 +149,37 @@
                             </div>
                             <p class="text-2xl font-black text-slate-700 group-hover:text-blue-600 transition pt-3">+91 8879732777</p>
                         </a>
-                        <a href="mailto:info@pharchem.in?subject=Website%20Inquiry" class="flex items-start space-x-6 group transition">
+                        <a href="mailto:info@pharchem.in" class="flex items-start space-x-6 group transition">
                             <div class="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center flex-shrink-0 group-hover:bg-blue-600 transition">
                                 <i class="fas fa-envelope text-blue-600 text-2xl group-hover:text-white"></i>
                             </div>
                             <p class="text-2xl font-semibold text-slate-700 group-hover:text-blue-600 transition pt-3">info@pharchem.in</p>
                         </a>
                     </div>
+                    <div class="map-container shadow-lg border">
+                        <iframe src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d3749.1234!2d72.74!3d19.82!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x0%3A0x0!2zMTnCsDQ5JzEyLjAiTiA3MsKwNDQnMjQuMCJF!5e0!3m2!1sen!2sin!4v1620000000000!5m2!1sen!2sin" allowfullscreen="" loading="lazy"></iframe>
+                    </div>
                 </div>
 
                 <div class="bg-slate-50 p-8 rounded-2xl border border-slate-200 shadow-sm">
-                    <h3 class="text-xl font-bold text-blue-900 mb-6 uppercase tracking-wider">Quick Inquiry</h3>
-                    <form action="mailto:info@pharchem.in" method="GET" enctype="text/plain" class="space-y-4">
+                    <h3 class="text-2xl font-bold text-blue-900 mb-6">Submit Inquiry</h3>
+                    <form action="mailto:info@pharchem.in" method="post" enctype="text/plain" class="space-y-5">
                         <div>
-                            <label class="text-xs font-bold text-slate-500 uppercase ml-1">Contact Person Name</label>
-                            <input type="text" name="Name" placeholder="Enter your name" required>
+                            <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Full Name</label>
+                            <input type="text" name="Name" placeholder="Your Name" required>
                         </div>
                         <div>
-                            <label class="text-xs font-bold text-slate-500 uppercase ml-1">Company Name</label>
-                            <input type="text" name="Company" placeholder="Enter company name" required>
+                            <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Company Name</label>
+                            <input type="text" name="Company" placeholder="Your Company" required>
                         </div>
                         <div>
-                            <label class="text-xs font-bold text-slate-500 uppercase ml-1">Requested Paste Quantity (MT)</label>
-                            <input type="number" name="Quantity" placeholder="e.g. 50" required>
+                            <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Requirement (Quantity / Paste Type)</label>
+                            <textarea name="Quantity" rows="4" placeholder="e.g. 50 MT Aluminium Hydroxide Gel Paste" required></textarea>
                         </div>
-                        <input type="hidden" name="subject" value="New Inquiry from Website">
-                        <button type="submit" class="w-full bg-blue-900 text-white font-black py-4 rounded-lg hover:bg-blue-800 transition uppercase tracking-widest text-sm mt-4">Submit Details</button>
-                        <p class="text-[10px] text-center text-slate-400 mt-2 italic">Submission will open your default email application.</p>
+                        <button type="submit" class="w-full bg-blue-900 text-white font-bold py-4 rounded-lg hover:bg-blue-800 transition shadow-lg uppercase tracking-widest">Send Inquiry</button>
                     </form>
+                    <p class="text-[10px] text-slate-400 mt-4 text-center italic">This form will open your email client to send the details securely to info@pharchem.in</p>
                 </div>
-
             </div>
         </div>
     </section>
