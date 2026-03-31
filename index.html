@@ -10,17 +10,20 @@
     <style>
         .hero-gradient { background: linear-gradient(rgba(15, 23, 42, 0.85), rgba(15, 23, 42, 0.85)), url('https://images.unsplash.com/photo-1581091226825-a6a2a5aee158?auto=format&fit=crop&q=80'); background-size: cover; background-position: center; }
         html { scroll-behavior: smooth; }
-        .partner-card { background: #ffffff; border: 1px solid #e2e8f0; padding: 1.5rem; border-radius: 1rem; transition: all 0.3s; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 140px; text-align: center; }
-        .partner-card:hover { transform: translateY(-5px); box-shadow: 0 10px 25px -5px rgba(0,0,0,0.1); border-color: #2563eb; }
-        .logo-text { font-family: ui-sans-serif, system-ui, -apple-system, sans-serif; font-weight: 900; letter-spacing: -0.05em; color: #1e293b; line-height: 1; }
+        .partner-card { background: #ffffff; border: 1px solid #e2e8f0; padding: 2rem; border-radius: 1rem; transition: all 0.3s; display: flex; flex-direction: column; height: 100%; text-align: center; }
+        .partner-card:hover { transform: translateY(-5px); box-shadow: 0 10px 25px -5px rgba(37, 99, 235, 0.15); border-color: #2563eb; }
         .map-container { position: relative; padding-bottom: 65%; height: 0; overflow: hidden; border-radius: 1rem; }
         .map-container iframe { position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: 0; }
-        .rpg-stripes { height: 4px; width: 40px; background: linear-gradient(to right, #ef4444, #f59e0b, #10b981, #3b82f6); margin: 8px auto; }
-        .roha-bars { display: flex; gap: 2px; justify-content: center; margin-bottom: 4px; }
-        .roha-bar { width: 12px; height: 3px; }
+        /* WhatsApp Pulse Animation */
+        @keyframes pulse-green { 0% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.7); } 70% { box-shadow: 0 0 0 15px rgba(34, 197, 94, 0); } 100% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0); } }
+        .whatsapp-float { animation: pulse-green 2s infinite; }
     </style>
 </head>
-<body class="bg-slate-50 text-slate-900 font-sans">
+<body class="bg-slate-50 text-slate-900 font-sans relative">
+
+    <a href="https://wa.me/918879732777" target="_blank" class="fixed bottom-6 right-6 bg-green-500 text-white w-16 h-16 rounded-full flex items-center justify-center text-4xl shadow-2xl hover:bg-green-600 transition z-50 whatsapp-float">
+        <i class="fab fa-whatsapp"></i>
+    </a>
 
     <nav class="sticky top-0 z-50 bg-white shadow-md">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -64,140 +67,165 @@
             </div>
 
             <div class="mb-20">
-                <div class="flex items-center mb-8">
+                <div class="flex items-center mb-10">
                     <div class="h-px bg-slate-300 flex-grow"></div>
-                    <span class="px-6 text-sm font-black text-slate-500 uppercase tracking-widest text-center">Antacid Formulation Partners</span>
+                    <span class="px-6 text-xl font-black text-slate-800 uppercase tracking-widest text-center">Pharmaceutical & Life Sciences</span>
                     <div class="h-px bg-slate-300 flex-grow"></div>
                 </div>
-                <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
                     <div class="partner-card">
-                        <span class="logo-text text-xl text-blue-600 uppercase">Pfizer</span>
-                        <p class="text-[9px] mt-3 font-bold text-slate-400 uppercase leading-tight">Vaccines & Internal Medicine</p>
+                        <h4 class="text-2xl font-black text-blue-900 mb-3 uppercase tracking-wide border-b-2 border-blue-100 pb-2">Pfizer</h4>
+                        <p class="text-slate-600 text-sm leading-relaxed">Focus on vaccines, oncology, internal medicine, and rare disease treatments.</p>
                     </div>
                     <div class="partner-card">
-                        <span class="logo-text text-2xl text-blue-800 lowercase">abbott</span>
-                        <p class="text-[9px] mt-3 font-bold text-slate-400 uppercase leading-tight">Nutrition & Generics</p>
+                        <h4 class="text-2xl font-black text-blue-900 mb-3 uppercase tracking-wide border-b-2 border-blue-100 pb-2">Abbott</h4>
+                        <p class="text-slate-600 text-sm leading-relaxed">Core categories include medical devices, diagnostics, nutritionals (like Similac and Ensure), and branded generics.</p>
                     </div>
                     <div class="partner-card">
-                        <span class="logo-text text-lg uppercase">Alkem</span>
-                        <p class="text-[9px] mt-3 font-bold text-slate-400 uppercase leading-tight">Gastro-intestinal Care</p>
+                        <h4 class="text-2xl font-black text-blue-900 mb-3 uppercase tracking-wide border-b-2 border-blue-100 pb-2">Alkem Laboratories</h4>
+                        <p class="text-slate-600 text-sm leading-relaxed">Specialize in anti-infectives, gastrointestinal treatments, pain management, and vitamins.</p>
                     </div>
                     <div class="partner-card">
-                        <div class="border-2 border-red-600 rounded-full w-8 h-8 flex items-center justify-center mb-1"><span class="text-xs font-bold text-red-600">M</span></div>
-                        <span class="text-[10px] font-black uppercase text-blue-900">Macleods</span>
-                        <p class="text-[9px] mt-2 font-bold text-slate-400 uppercase leading-tight">Respiratory & Pharma</p>
+                        <h4 class="text-2xl font-black text-blue-900 mb-3 uppercase tracking-wide border-b-2 border-blue-100 pb-2">Macleods Pharmaceuticals</h4>
+                        <p class="text-slate-600 text-sm leading-relaxed">Produce drugs for cardiovascular, anti-diabetic, anti-tuberculosis, and respiratory conditions.</p>
                     </div>
                     <div class="partner-card">
-                        <span class="logo-text text-xl uppercase">RPG</span>
-                        <div class="rpg-stripes"></div>
-                        <p class="text-[9px] font-bold text-slate-400 uppercase leading-tight">Life Sciences & APIs</p>
+                        <h4 class="text-2xl font-black text-blue-900 mb-3 uppercase tracking-wide border-b-2 border-blue-100 pb-2">RPG Life Sciences</h4>
+                        <p class="text-slate-600 text-sm leading-relaxed">Focus on APIs, nephrology, oncology, and various formulations.</p>
                     </div>
-                    <div class="partner-card bg-blue-50 border-blue-200">
-                        <span class="logo-text text-sm uppercase text-blue-900">ENICAR</span>
-                        <p class="text-[9px] mt-3 font-bold text-blue-600 uppercase leading-tight">Antacids & Laxatives</p>
+                    <div class="partner-card">
+                        <h4 class="text-2xl font-black text-blue-900 mb-3 uppercase tracking-wide border-b-2 border-blue-100 pb-2">ENICAR Pharmaceuticals</h4>
+                        <p class="text-slate-600 text-sm leading-relaxed">Products include multivitamin syrups, Milk of Magnesia, antacids, and laxatives.</p>
                     </div>
                 </div>
             </div>
 
             <div>
-                <div class="flex items-center mb-8">
+                <div class="flex items-center mb-10">
                     <div class="h-px bg-slate-300 flex-grow"></div>
-                    <span class="px-6 text-sm font-black text-slate-500 uppercase tracking-widest text-center">Lake Color & Specialty Ingredient Partners</span>
+                    <span class="px-6 text-xl font-black text-slate-800 uppercase tracking-widest text-center">Specialty Chemicals, Colors & Ingredients</span>
                     <div class="h-px bg-slate-300 flex-grow"></div>
                 </div>
-                <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-4 gap-6 px-4 md:px-20">
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
                     <div class="partner-card">
-                        <div class="roha-bars">
-                            <div class="roha-bar bg-orange-500"></div>
-                            <div class="roha-bar bg-green-500"></div>
-                            <div class="roha-bar bg-blue-500"></div>
-                        </div>
-                        <span class="logo-text text-xl uppercase">Roha</span>
-                        <p class="text-[9px] mt-3 font-bold text-slate-400 uppercase leading-tight">Industrial Dyes & Colors</p>
+                        <h4 class="text-xl font-black text-blue-900 mb-3 uppercase tracking-wide border-b-2 border-blue-100 pb-2">Roha Dyechem</h4>
+                        <p class="text-slate-600 text-sm leading-relaxed">Specialize in synthetic and natural food colors as well as industrial dyes.</p>
                     </div>
                     <div class="partner-card">
-                        <div class="w-6 h-6 rounded-full border-2 border-blue-600 flex items-center justify-center mb-1"><div class="w-3 h-3 bg-orange-500 rounded-full"></div></div>
-                        <span class="text-xs font-black uppercase text-blue-700">Neelikon</span>
-                        <p class="text-[9px] mt-2 font-bold text-slate-400 uppercase leading-tight">Food & Lake Colors</p>
+                        <h4 class="text-xl font-black text-blue-900 mb-3 uppercase tracking-wide border-b-2 border-blue-100 pb-2">Neelikon Food Dyes</h4>
+                        <p class="text-slate-600 text-sm leading-relaxed">Known for synthetic food colors, lake colors, and high-purity iron oxides.</p>
                     </div>
                     <div class="partner-card">
-                        <span class="logo-text text-lg uppercase text-green-700">Akay</span>
-                        <p class="text-[9px] mt-3 font-bold text-slate-400 uppercase leading-tight">Natural Ingredients</p>
+                        <h4 class="text-xl font-black text-blue-900 mb-3 uppercase tracking-wide border-b-2 border-blue-100 pb-2">Akay Natural Ingredients</h4>
+                        <p class="text-slate-600 text-sm leading-relaxed">Focus on spice extracts, oleoresins, essential oils, and natural colors.</p>
                     </div>
                     <div class="partner-card">
-                        <span class="logo-text text-xs uppercase bg-red-600 text-white px-2 py-0.5 rounded">Aayush Aryan</span>
-                        <p class="text-[9px] mt-3 font-bold text-slate-400 uppercase leading-tight">Speciality Chemicals</p>
+                        <h4 class="text-xl font-black text-blue-900 mb-3 uppercase tracking-wide border-b-2 border-blue-100 pb-2">Aayusharyan</h4>
+                        <p class="text-slate-600 text-sm leading-relaxed">Core products include primary food colors, lake colors, cosmetic colors, and reactive dyes.</p>
                     </div>
                 </div>
             </div>
         </div>
     </section>
 
-    <section id="products" class="py-24 bg-white">
+    <section id="products" class="py-24 bg-white border-b">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div class="text-center mb-16">
                 <h2 class="text-4xl font-bold text-blue-900 mb-4">Core Specifications</h2>
                 <p class="text-slate-500 max-w-2xl mx-auto text-lg">Engineered for purity, consistency, and therapeutic efficacy across global markets.</p>
             </div>
             <div class="grid md:grid-cols-2 gap-12">
-                <div class="bg-slate-50 p-10 rounded-2xl border-t-8 border-blue-600 shadow-sm">
-                    <h3 class="text-2xl font-bold text-blue-900 mb-6">Aluminium Hydroxide Gel Paste (ALP)</h3>
-                    <ul class="space-y-6 text-slate-700 text-lg">
-                        <li class="flex justify-between border-b pb-3"><span>Assay (Al<sub>2</sub>O<sub>3</sub>)</span> <span class="font-bold text-blue-900">8% - 12%</span></li>
-                        <li class="flex justify-between border-b pb-3"><span>Monthly Capacity</span> <span class="font-bold text-blue-900">450 MT</span></li>
-                        <li class="text-sm pt-4 italic text-blue-700 font-medium">The preferred substrate for high-purity lake colors and liquid antacid formulations.</li>
-                    </ul>
+                <div class="bg-slate-50 p-10 rounded-2xl border-t-8 border-blue-600 shadow-sm flex flex-col justify-between">
+                    <div>
+                        <h3 class="text-2xl font-bold text-blue-900 mb-6">Aluminium Hydroxide Gel Paste (ALP)</h3>
+                        <ul class="space-y-6 text-slate-700 text-lg mb-8">
+                            <li class="flex justify-between border-b pb-3"><span>Assay (Al<sub>2</sub>O<sub>3</sub>)</span> <span class="font-bold text-blue-900">8% - 12%</span></li>
+                            <li class="flex justify-between border-b pb-3"><span>Monthly Capacity</span> <span class="font-bold text-blue-900">450 MT</span></li>
+                            <li class="text-sm pt-4 italic text-blue-700 font-medium">The preferred substrate for high-purity lake colors and liquid antacid formulations.</li>
+                        </ul>
+                    </div>
+                    <a href="#contact" class="text-center bg-blue-100 text-blue-800 font-bold py-3 rounded-lg hover:bg-blue-600 hover:text-white transition uppercase tracking-widest text-sm w-full block">Request COA (Certificate of Analysis)</a>
                 </div>
-                <div class="bg-slate-50 p-10 rounded-2xl border-t-8 border-blue-600 shadow-sm">
-                    <h3 class="text-2xl font-bold text-blue-900 mb-6">Magnesium Hydroxide Paste (MGP)</h3>
-                    <ul class="space-y-6 text-slate-700 text-lg">
-                        <li class="flex justify-between border-b pb-3"><span>Assay (Mg(OH)<sub>2</sub>)</span> <span class="font-bold text-blue-900">19% - 35%</span></li>
-                        <li class="flex justify-between border-b pb-3"><span>Monthly Capacity</span> <span class="font-bold text-blue-900">160 MT</span></li>
-                        <li class="text-sm pt-4 italic text-blue-700 font-medium">Optimized for stability and neutralizing capacity in premium pharmaceutical suspensions.</li>
-                    </ul>
+                <div class="bg-slate-50 p-10 rounded-2xl border-t-8 border-blue-600 shadow-sm flex flex-col justify-between">
+                    <div>
+                        <h3 class="text-2xl font-bold text-blue-900 mb-6">Magnesium Hydroxide Paste (MGP)</h3>
+                        <ul class="space-y-6 text-slate-700 text-lg mb-8">
+                            <li class="flex justify-between border-b pb-3"><span>Assay (Mg(OH)<sub>2</sub>)</span> <span class="font-bold text-blue-900">19% - 35%</span></li>
+                            <li class="flex justify-between border-b pb-3"><span>Monthly Capacity</span> <span class="font-bold text-blue-900">160 MT</span></li>
+                            <li class="text-sm pt-4 italic text-blue-700 font-medium">Optimized for stability and neutralizing capacity in premium pharmaceutical suspensions.</li>
+                        </ul>
+                    </div>
+                    <a href="#contact" class="text-center bg-blue-100 text-blue-800 font-bold py-3 rounded-lg hover:bg-blue-600 hover:text-white transition uppercase tracking-widest text-sm w-full block">Request COA (Certificate of Analysis)</a>
                 </div>
             </div>
         </div>
     </section>
 
-    <section id="contact" class="py-24 bg-white border-t">
+    <section class="py-20 bg-blue-900 text-white">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
+            <h2 class="text-xs font-bold text-blue-400 uppercase tracking-[0.4em] mb-4">Quality Assured</h2>
+            <h3 class="text-3xl font-bold mb-12">Trusted by Global Procurement Teams</h3>
+            <div class="grid md:grid-cols-3 gap-8">
+                <div class="bg-white/10 p-8 rounded-xl border border-white/20">
+                    <div class="text-blue-400 text-4xl mb-4"><i class="fas fa-quote-left"></i></div>
+                    <p class="text-slate-200 italic mb-6">"Pharchem consistently delivers exact viscosity and assay parameters batch after batch. Their transparency during audits makes them a preferred vendor."</p>
+                    <p class="font-bold uppercase tracking-wider text-sm">Quality Assurance Manager</p>
+                    <p class="text-xs text-blue-300">Leading Formulation Company</p>
+                </div>
+                <div class="bg-white/10 p-8 rounded-xl border border-white/20">
+                    <div class="text-blue-400 text-4xl mb-4"><i class="fas fa-quote-left"></i></div>
+                    <p class="text-slate-200 italic mb-6">"Their ability to handle large export capacities while maintaining strict c-GMP compliance has stabilized our supply chain significantly."</p>
+                    <p class="font-bold uppercase tracking-wider text-sm">Procurement Head</p>
+                    <p class="text-xs text-blue-300">Global Pharma Exporter</p>
+                </div>
+                <div class="bg-white/10 p-8 rounded-xl border border-white/20">
+                    <div class="text-blue-400 text-4xl mb-4"><i class="fas fa-quote-left"></i></div>
+                    <p class="text-slate-200 italic mb-6">"The purity of their Aluminium Hydroxide Gel Paste is unmatched in the local market, making it the perfect substrate for our specialized lake colors."</p>
+                    <p class="font-bold uppercase tracking-wider text-sm">R&D Director</p>
+                    <p class="text-xs text-blue-300">Specialty Chemical Manufacturer</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section id="contact" class="py-24 bg-white">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div class="grid lg:grid-cols-2 gap-16 items-center">
                 <div class="bg-slate-100 p-2 rounded-2xl shadow-inner">
                     <div class="map-container">
-                        <iframe src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d3753.864434237593!2d72.7483664!3d19.8033621!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x3be719001f302005%3A0xe67d60517551000!2sPharchem%20Pvt%20Ltd!5e0!3m2!1sen!2sin!4v1711880000000" allowfullscreen="" loading="lazy"></iframe>
+                        <iframe src="http://googleusercontent.com/maps.google.com/9" allowfullscreen="" loading="lazy"></iframe>
                     </div>
                 </div>
                 <div>
                     <h2 class="text-3xl font-bold text-blue-900 mb-8">Inquiries & Operations</h2>
                     <div class="space-y-8">
                         <div class="flex items-start space-x-5">
-                            <div class="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center flex-shrink-0">
-                                <i class="fas fa-map-marker-alt text-blue-600 text-xl"></i>
+                            <div class="w-14 h-14 bg-blue-100 rounded-full flex items-center justify-center flex-shrink-0">
+                                <i class="fas fa-map-marker-alt text-blue-600 text-2xl"></i>
                             </div>
                             <div>
                                 <h4 class="font-bold text-slate-900 text-lg">Manufacturing Facility</h4>
-                                <p class="text-slate-600 leading-relaxed">Plot No. N/82 & N/82-1, M.I.D.C., Tarapur, Palghar, Maharashtra – 401506, India</p>
+                                <p class="text-slate-600 leading-relaxed text-lg mt-1">Plot No. N/82 & N/82-1, M.I.D.C., Tarapur,<br>Palghar, Maharashtra – 401506, India</p>
                             </div>
                         </div>
-                        <a href="tel:+918879732777" class="flex items-center space-x-5 group transition">
-                            <div class="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center flex-shrink-0 group-hover:bg-blue-600 transition">
-                                <i class="fas fa-phone text-blue-600 text-xl group-hover:text-white"></i>
+                        <a href="tel:+918879732777" class="flex items-start space-x-5 group transition">
+                            <div class="w-14 h-14 bg-blue-100 rounded-full flex items-center justify-center flex-shrink-0 group-hover:bg-blue-600 transition">
+                                <i class="fas fa-phone text-blue-600 text-2xl group-hover:text-white"></i>
                             </div>
                             <div>
                                 <h4 class="font-bold text-slate-900 text-lg">Contact Number</h4>
-                                <p class="text-2xl font-black text-slate-700 group-hover:text-blue-600 transition">+91 8879732777</p>
+                                <p class="text-2xl font-black text-slate-700 group-hover:text-blue-600 transition mt-1">+91 8879732777</p>
                             </div>
                         </a>
-                        <div class="flex items-center space-x-5">
-                            <div class="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center flex-shrink-0">
-                                <i class="fas fa-envelope text-blue-600 text-xl"></i>
+                        <a href="mailto:info@pharchem.in" class="flex items-start space-x-5 group transition">
+                            <div class="w-14 h-14 bg-blue-100 rounded-full flex items-center justify-center flex-shrink-0 group-hover:bg-blue-600 transition">
+                                <i class="fas fa-envelope text-blue-600 text-2xl group-hover:text-white"></i>
                             </div>
                             <div>
                                 <h4 class="font-bold text-slate-900 text-lg">Official Email</h4>
-                                <p class="text-xl font-semibold text-slate-700">info@pharchem.in</p>
+                                <p class="text-xl font-semibold text-slate-700 group-hover:text-blue-600 transition mt-1">info@pharchem.in</p>
                             </div>
-                        </div>
+                        </a>
                     </div>
                 </div>
             </div>
