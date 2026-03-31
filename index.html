@@ -5,7 +5,8 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <style>
-        .hero-gradient { background: linear-gradient(rgba(15, 23, 42, 0.85), rgba(15, 23, 42, 0.85)), url('https://images.unsplash.com/photo-1581091226825-a6a2a5aee158?auto=format&fit=crop&q=80'); background-size: cover; background-position: center; }
+        /* Background updated to a milky/blue liquid abstract representing Antacid/MGP/ALP */
+        .hero-gradient { background: linear-gradient(rgba(15, 23, 42, 0.80), rgba(15, 23, 42, 0.85)), url('https://images.unsplash.com/photo-1579373903781-fd5c0c30c4cd?auto=format&fit=crop&q=80'); background-size: cover; background-position: center; }
         html { scroll-behavior: smooth; }
         .partner-card { background: #f8fafc; border: 1px solid #e2e8f0; padding: 1rem; border-radius: 0.75rem; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100px; transition: all 0.3s; text-align: center; }
         .partner-card:hover { border-color: #2563eb; background: white; transform: translateY(-2px); box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1); }
@@ -54,35 +55,29 @@
             <div class="grid grid-cols-2 md:grid-cols-5 gap-4 mb-4">
                 <div class="partner-card">
                     <span class="logo-text text-2xl uppercase">Pfizer</span>
-                    <span class="text-[10px] text-slate-500 font-bold uppercase mt-1 tracking-wider">Gelusil, Mucaine</span>
                 </div>
                 <div class="partner-card">
                     <span class="logo-text text-2xl text-blue-800">Abbott</span>
-                    <span class="text-[10px] text-slate-500 font-bold uppercase mt-1 tracking-wider">Digene</span>
                 </div>
                 <div class="partner-card">
                     <span class="logo-text text-2xl italic">Alkem</span>
-                    <span class="text-[10px] text-slate-500 font-bold uppercase mt-1 tracking-wider">Gastro-Intestinal Line</span>
                 </div>
                 <div class="partner-card">
                     <span class="logo-text text-xl uppercase">Macleods</span>
-                    <span class="text-[10px] text-slate-500 font-bold uppercase mt-1 tracking-wider">Antacid Suspensions</span>
                 </div>
                 <div class="partner-card">
-                    <div class="text-center leading-none mb-1">
+                    <div class="text-center leading-none">
                         <span class="font-black text-lg block border-b-2 border-red-600">RPG</span>
                         <span class="text-[9px] font-bold uppercase text-slate-500">Life Sciences</span>
                     </div>
-                    <span class="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Pharmaceutical Formulations</span>
                 </div>
             </div>
             <div class="grid grid-cols-2 md:grid-cols-5 gap-4">
                 <div class="partner-card bg-blue-50 border-blue-200">
-                    <div class="text-center leading-none mb-1">
+                    <div class="text-center leading-none">
                         <span class="font-black text-blue-900 text-lg block">ENICAR</span>
                         <span class="text-[8px] font-bold text-blue-600 uppercase">Pharmaceuticals</span>
                     </div>
-                    <span class="text-[10px] text-blue-800 font-bold uppercase tracking-wider">Milk of Magnesia, Laxatives</span>
                 </div>
                 <div class="partner-card"><span class="logo-text text-sm uppercase text-slate-500">Roha Dyechem</span></div>
                 <div class="partner-card"><span class="logo-text text-sm uppercase text-slate-500">Neelikon</span></div>
@@ -125,20 +120,15 @@
                 <div>
                     <h2 class="text-3xl font-bold mb-6 tracking-wide uppercase">Global & Local Supply Network</h2>
                     <p class="text-blue-200 mb-8 leading-relaxed text-lg text-left">From our state-of-the-art facility in Tarapur, Maharashtra, we supply premium products locally across India and export to international hubs including Dubai and Sri Lanka.</p>
-                    <div class="grid grid-cols-2 gap-4">
-                        <div class="p-4 bg-white/5 border border-white/10 rounded-xl text-center">
-                            <i class="fas fa-certificate text-xl mb-2 text-blue-400"></i>
-                            <p class="font-bold uppercase text-[9px]">ISO 9001:2015</p>
-                        </div>
-                        <div class="p-4 bg-white/5 border border-white/10 rounded-xl text-center">
-                            <i class="fas fa-check-double text-xl mb-2 text-blue-400"></i>
-                            <p class="font-bold uppercase text-[9px]">c-GMP Schedule M</p>
-                        </div>
-                    </div>
                 </div>
-                <div class="bg-white p-2 rounded-2xl shadow-2xl">
-                    <div class="map-container">
-                        <iframe src="https://maps.google.com/maps?q=Pharchem%20Private%20Limited,%20N-82%20&%20N-82/1,%20MIDC%20Rd,%20Tarapur%20M.I.D.C.,%20Industrial%20Area,%20Tarapur,%20Pam,%20Maharashtra%20401506&t=&z=14&ie=UTF8&iwloc=&output=embed" allowfullscreen="" loading="lazy"></iframe>
+                <div class="grid grid-cols-2 gap-4">
+                    <div class="p-6 bg-white/5 border border-white/10 rounded-xl text-center">
+                        <i class="fas fa-certificate text-2xl mb-3 text-blue-400"></i>
+                        <p class="font-bold uppercase text-xs tracking-wider">ISO 9001:2015</p>
+                    </div>
+                    <div class="p-6 bg-white/5 border border-white/10 rounded-xl text-center">
+                        <i class="fas fa-check-double text-2xl mb-3 text-blue-400"></i>
+                        <p class="font-bold uppercase text-xs tracking-wider">c-GMP Schedule M</p>
                     </div>
                 </div>
             </div>
@@ -147,32 +137,52 @@
 
     <section id="contact" class="py-24 bg-slate-50">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div class="grid md:grid-cols-2 gap-16">
-                <div>
-                    <h2 class="text-3xl font-bold text-blue-900 mb-8 uppercase tracking-tighter">Inquiries & Operations</h2>
-                    <div class="space-y-8">
-                        <div class="flex items-start space-x-4">
-                            <i class="fas fa-map-marker-alt text-blue-600 text-2xl mt-1"></i>
-                            <p class="text-slate-600 text-lg"><strong>Pharchem Private Limited</strong><br>N-82 & N-82/1, MIDC Rd, Tarapur M.I.D.C.,<br>Industrial Area, Tarapur, Pam,<br>Maharashtra 401506</p>
+            <div class="text-center mb-16">
+                <h2 class="text-4xl font-bold text-blue-900 mb-4 uppercase tracking-tighter">Inquiries & Operations</h2>
+                <p class="text-slate-500 text-lg">Reach out to us via Email, Phone, or WhatsApp for business inquiries.</p>
+            </div>
+            
+            <div class="grid md:grid-cols-2 gap-16 mb-16">
+                <div class="space-y-6">
+                    <div class="flex items-start space-x-4 mb-8">
+                        <i class="fas fa-map-marker-alt text-blue-600 text-2xl mt-1"></i>
+                        <p class="text-slate-600 text-lg"><strong>Pharchem Private Limited</strong><br>N-82 & N-82/1, MIDC Rd, Tarapur M.I.D.C.,<br>Industrial Area, Tarapur, Pam,<br>Maharashtra 401506</p>
+                    </div>
+                    
+                    <a href="tel:+918879732777" class="flex items-center space-x-4 hover:text-blue-600 transition group p-4 bg-white rounded-xl shadow-sm border border-slate-100">
+                        <div class="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center group-hover:bg-blue-600 transition">
+                            <i class="fas fa-phone text-blue-600 text-xl group-hover:text-white"></i>
                         </div>
-                        <a href="tel:+918879732777" class="flex items-center space-x-4 hover:text-blue-600 transition group">
-                            <div class="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center group-hover:bg-blue-600 transition">
-                                <i class="fas fa-phone text-blue-600 text-xl group-hover:text-white"></i>
-                            </div>
-                            <span class="text-2xl font-bold text-slate-700">+91 8879732777</span>
-                        </a>
-                        <div class="flex items-center space-x-4">
-                            <i class="fas fa-envelope text-blue-600 text-xl"></i>
-                            <p class="text-slate-700 text-lg font-semibold">info@pharchem.in</p>
+                        <span class="text-xl font-bold text-slate-700">+91 8879732777</span>
+                    </a>
+                    
+                    <a href="https://wa.me/918879732777" target="_blank" class="flex items-center space-x-4 hover:text-green-500 transition group p-4 bg-white rounded-xl shadow-sm border border-slate-100">
+                        <div class="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center group-hover:bg-green-500 transition">
+                            <i class="fab fa-whatsapp text-green-600 text-2xl group-hover:text-white"></i>
+                        </div>
+                        <span class="text-xl font-bold text-slate-700">Chat on WhatsApp</span>
+                    </a>
+
+                    <a href="mailto:info@pharchem.in" class="flex items-center space-x-4 hover:text-blue-600 transition group p-4 bg-white rounded-xl shadow-sm border border-slate-100">
+                        <div class="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center group-hover:bg-blue-600 transition">
+                            <i class="fas fa-envelope text-blue-600 text-xl group-hover:text-white"></i>
+                        </div>
+                        <span class="text-xl font-bold text-slate-700">info@pharchem.in</span>
+                    </a>
+
+                    <div class="bg-white p-2 rounded-2xl shadow-sm border border-slate-200 mt-8">
+                        <div class="map-container">
+                            <iframe src="https://maps.google.com/maps?q=Tarapur%20MIDC,%20Maharashtra%20401506&t=&z=13&ie=UTF8&iwloc=&output=embed" allowfullscreen="" loading="lazy" referrerpolicy="no-referrer-when-downgrade"></iframe>
                         </div>
                     </div>
                 </div>
-                <form class="bg-white p-10 rounded-2xl border shadow-xl" onsubmit="alert('Thank you! Your inquiry has been sent to info@pharchem.in'); return false;">
+
+                <form class="bg-white p-10 rounded-2xl border shadow-xl h-fit" onsubmit="alert('Thank you! Your inquiry has been sent to info@pharchem.in'); return false;">
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                         <input type="text" required placeholder="Full Name" class="p-4 border rounded-xl w-full bg-slate-50 outline-blue-600">
                         <input type="email" required placeholder="Email" class="p-4 border rounded-xl w-full bg-slate-50 outline-blue-600">
                     </div>
-                    <textarea required placeholder="Requirements (Product & Quantity)" rows="4" class="p-4 border rounded-xl w-full mb-6 bg-slate-50 outline-blue-600"></textarea>
+                    <textarea required placeholder="Requirements (Product & Quantity)" rows="6" class="p-4 border rounded-xl w-full mb-6 bg-slate-50 outline-blue-600"></textarea>
                     <button type="submit" class="w-full bg-blue-900 text-white font-bold py-4 rounded-xl hover:bg-blue-800 transition uppercase tracking-widest">Submit Inquiry</button>
                 </form>
             </div>
