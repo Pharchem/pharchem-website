@@ -8,11 +8,9 @@
         /* Background updated to a milky/blue liquid abstract representing Antacid/MGP/ALP */
         .hero-gradient { background: linear-gradient(rgba(15, 23, 42, 0.80), rgba(15, 23, 42, 0.85)), url('https://images.unsplash.com/photo-1579373903781-fd5c0c30c4cd?auto=format&fit=crop&q=80'); background-size: cover; background-position: center; }
         html { scroll-behavior: smooth; }
-        .partner-card { background: #f8fafc; border: 1px solid #e2e8f0; padding: 1rem; border-radius: 0.75rem; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100px; transition: all 0.3s; text-align: center; }
+        .partner-card { background: #f8fafc; border: 1px solid #e2e8f0; padding: 1rem; border-radius: 0.75rem; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 110px; transition: all 0.3s; text-align: center; }
         .partner-card:hover { border-color: #2563eb; background: white; transform: translateY(-2px); box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1); }
         .logo-text { font-family: ui-sans-serif, system-ui, -apple-system, sans-serif; font-weight: 900; letter-spacing: -0.05em; color: #1e293b; }
-        .map-container { position: relative; padding-bottom: 60%; height: 0; overflow: hidden; border-radius: 1rem; }
-        .map-container iframe { position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: 0; }
     </style></head><body class="bg-slate-50 text-slate-900 font-sans">
 
     <nav class="sticky top-0 z-50 bg-white shadow-md">
@@ -55,29 +53,35 @@
             <div class="grid grid-cols-2 md:grid-cols-5 gap-4 mb-4">
                 <div class="partner-card">
                     <span class="logo-text text-2xl uppercase">Pfizer</span>
+                    <span class="text-[10px] text-slate-500 font-bold uppercase mt-2 tracking-wider">Gelusil, Mucaine</span>
                 </div>
                 <div class="partner-card">
                     <span class="logo-text text-2xl text-blue-800">Abbott</span>
+                    <span class="text-[10px] text-slate-500 font-bold uppercase mt-2 tracking-wider">Digene</span>
                 </div>
                 <div class="partner-card">
                     <span class="logo-text text-2xl italic">Alkem</span>
+                    <span class="text-[10px] text-slate-500 font-bold uppercase mt-2 tracking-wider">Gastro-Intestinal Line</span>
                 </div>
                 <div class="partner-card">
                     <span class="logo-text text-xl uppercase">Macleods</span>
+                    <span class="text-[10px] text-slate-500 font-bold uppercase mt-2 tracking-wider">Antacid Suspensions</span>
                 </div>
                 <div class="partner-card">
-                    <div class="text-center leading-none">
+                    <div class="text-center leading-none mb-2">
                         <span class="font-black text-lg block border-b-2 border-red-600">RPG</span>
                         <span class="text-[9px] font-bold uppercase text-slate-500">Life Sciences</span>
                     </div>
+                    <span class="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Pharmaceutical Formulations</span>
                 </div>
             </div>
             <div class="grid grid-cols-2 md:grid-cols-5 gap-4">
                 <div class="partner-card bg-blue-50 border-blue-200">
-                    <div class="text-center leading-none">
+                    <div class="text-center leading-none mb-2">
                         <span class="font-black text-blue-900 text-lg block">ENICAR</span>
                         <span class="text-[8px] font-bold text-blue-600 uppercase">Pharmaceuticals</span>
                     </div>
+                    <span class="text-[10px] text-blue-800 font-bold uppercase tracking-wider">Milk of Magnesia, Laxatives</span>
                 </div>
                 <div class="partner-card"><span class="logo-text text-sm uppercase text-slate-500">Roha Dyechem</span></div>
                 <div class="partner-card"><span class="logo-text text-sm uppercase text-slate-500">Neelikon</span></div>
@@ -144,9 +148,15 @@
             
             <div class="grid md:grid-cols-2 gap-16 mb-16">
                 <div class="space-y-6">
+                    
                     <div class="flex items-start space-x-4 mb-8">
                         <i class="fas fa-map-marker-alt text-blue-600 text-2xl mt-1"></i>
-                        <p class="text-slate-600 text-lg"><strong>Pharchem Private Limited</strong><br>N-82 & N-82/1, MIDC Rd, Tarapur M.I.D.C.,<br>Industrial Area, Tarapur, Pam,<br>Maharashtra 401506</p>
+                        <div class="w-full">
+                            <p class="text-slate-600 text-lg mb-4"><strong>Pharchem Private Limited</strong><br>N-82 & N-82/1, MIDC Rd, Tarapur M.I.D.C.,<br>Industrial Area, Tarapur, Pam,<br>Maharashtra 401506</p>
+                            <div class="w-full h-48 rounded-lg overflow-hidden border border-slate-200 shadow-sm">
+                                <iframe src="https://maps.google.com/maps?q=Pharchem%20Private%20Limited,%20Tarapur%20MIDC,%20Maharashtra&t=&z=13&ie=UTF8&iwloc=&output=embed" width="100%" height="100%" frameborder="0" style="border:0;" allowfullscreen="" loading="lazy"></iframe>
+                            </div>
+                        </div>
                     </div>
                     
                     <a href="tel:+918879732777" class="flex items-center space-x-4 hover:text-blue-600 transition group p-4 bg-white rounded-xl shadow-sm border border-slate-100">
@@ -169,12 +179,6 @@
                         </div>
                         <span class="text-xl font-bold text-slate-700">info@pharchem.in</span>
                     </a>
-
-                    <div class="bg-white p-2 rounded-2xl shadow-sm border border-slate-200 mt-8">
-                        <div class="map-container">
-                            <iframe src="https://maps.google.com/maps?q=Tarapur%20MIDC,%20Maharashtra%20401506&t=&z=13&ie=UTF8&iwloc=&output=embed" allowfullscreen="" loading="lazy" referrerpolicy="no-referrer-when-downgrade"></iframe>
-                        </div>
-                    </div>
                 </div>
 
                 <form class="bg-white p-10 rounded-2xl border shadow-xl h-fit" onsubmit="alert('Thank you! Your inquiry has been sent to info@pharchem.in'); return false;">
