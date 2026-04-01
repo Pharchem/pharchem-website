@@ -52,6 +52,7 @@
     <section id="about" class="py-20 bg-white border-b">
         <div class="max-w-7xl mx-auto px-4 text-center">
             <h2 class="text-xs font-bold text-blue-600 uppercase tracking-[0.4em] mb-12">Trusted by Global Leaders</h2>
+            
             <div class="grid grid-cols-2 md:grid-cols-3 gap-6 mb-6">
                 <div class="partner-card">
                     <span class="logo-text-std">Pfizer</span>
@@ -66,7 +67,8 @@
                     <span class="text-[10px] text-slate-500 font-bold uppercase mt-2 tracking-wider">Gastro-Intestinal Line</span>
                 </div>
             </div>
-            <div class="grid grid-cols-2 md:grid-cols-3 gap-6">
+            
+            <div class="grid grid-cols-2 md:grid-cols-3 gap-6 mb-6">
                 <div class="partner-card">
                     <span class="logo-text-std">Macleods</span>
                     <span class="text-[10px] text-slate-500 font-bold uppercase mt-2 tracking-wider">Antacid Suspensions</span>
@@ -78,6 +80,25 @@
                 <div class="partner-card">
                     <span class="logo-text-std">ENICAR</span>
                     <span class="text-[10px] text-slate-500 font-bold uppercase mt-2 tracking-wider">Milk of Magnesia, Laxatives</span>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-6">
+                <div class="partner-card">
+                    <span class="logo-text-std text-slate-600">Roha Dyechem</span>
+                    <span class="text-[10px] text-slate-500 font-bold uppercase mt-2 tracking-wider">Lake Colors</span>
+                </div>
+                <div class="partner-card">
+                    <span class="logo-text-std text-slate-600">Neelikon</span>
+                    <span class="text-[10px] text-slate-500 font-bold uppercase mt-2 tracking-wider">Lake Colors</span>
+                </div>
+                <div class="partner-card">
+                    <span class="logo-text-std text-slate-600">Akay</span>
+                    <span class="text-[10px] text-slate-500 font-bold uppercase mt-2 tracking-wider">Lake Colors</span>
+                </div>
+                <div class="partner-card">
+                    <span class="logo-text-std text-slate-600">Aayusharyan</span>
+                    <span class="text-[10px] text-slate-500 font-bold uppercase mt-2 tracking-wider">Lake Colors</span>
                 </div>
             </div>
         </div>
@@ -171,13 +192,15 @@
                     </div>
                 </div>
                 
-                <form class="bg-white p-10 rounded-2xl border shadow-xl h-fit" onsubmit="alert('Thank you! Your inquiry has been sent to info@pharchem.in'); return false;">
+                <form class="bg-white p-10 rounded-2xl border shadow-xl h-fit" onsubmit="event.preventDefault(); const name=document.getElementById('inqName').value; const email=document.getElementById('inqEmail').value; const req=document.getElementById('inqReq').value; const msg='*New Website Inquiry*%0A*Name:* '+name+'%0A*Email:* '+email+'%0A*Requirements:* '+req; window.open('https://wa.me/918879732777?text='+encodeURIComponent(msg), '_blank');">
                     <div class="grid grid-cols-1 gap-4 mb-4">
-                        <input type="text" required placeholder="Full Name" class="p-4 border rounded-xl w-full bg-slate-50 outline-blue-600">
-                        <input type="email" required placeholder="Email" class="p-4 border rounded-xl w-full bg-slate-50 outline-blue-600">
+                        <input id="inqName" type="text" required placeholder="Full Name" class="p-4 border rounded-xl w-full bg-slate-50 outline-blue-600">
+                        <input id="inqEmail" type="email" required placeholder="Email" class="p-4 border rounded-xl w-full bg-slate-50 outline-blue-600">
                     </div>
-                    <textarea required placeholder="Requirements (Product & Quantity)" rows="6" class="p-4 border rounded-xl w-full mb-6 bg-slate-50 outline-blue-600"></textarea>
-                    <button type="submit" class="w-full bg-blue-900 text-white font-bold py-4 rounded-xl hover:bg-blue-800 transition uppercase tracking-widest">Submit Inquiry</button>
+                    <textarea id="inqReq" required placeholder="Requirements (Product & Quantity)" rows="6" class="p-4 border rounded-xl w-full mb-6 bg-slate-50 outline-blue-600"></textarea>
+                    <button type="submit" class="w-full bg-blue-900 text-white font-bold py-4 rounded-xl hover:bg-blue-800 transition uppercase tracking-widest flex justify-center items-center">
+                        <i class="fab fa-whatsapp mr-2 text-xl"></i> Submit via WhatsApp
+                    </button>
                 </form>
             </div>
         </div>
