@@ -1,0 +1,13 @@
+{
+  "name": "pharchem-website",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Pharchem Private Limited website (static, GitHub Pages).",
+  "scripts": {
+    "build": "tailwindcss -i ./src/input.css -o ./styles.css --minify",
+    "watch": "tailwindcss -i ./src/input.css -o ./styles.css --watch"
+  },
+  "devDependencies": {
+    "tailwindcss": "^3.4.17"
+  }
+}
