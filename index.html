@@ -27,7 +27,7 @@
     <link rel="stylesheet" href="styles.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <style>
-        .hero-gradient { background: linear-gradient(rgba(15, 23, 42, 0.85), rgba(15, 23, 42, 0.85)), url('Background.jpg'); background-size: cover; background-position: center; }
+        .hero-gradient { background: linear-gradient(rgba(15, 23, 42, 0.72), rgba(15, 23, 42, 0.72)), url('Background.jpg'); background-size: cover; background-position: center; }
         html { scroll-behavior: smooth; }
         .partner-card { background: #ffffff; border: 1px solid #e2e8f0; padding: 1.25rem 0.75rem; border-radius: 0.75rem; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 110px; transition: all 0.3s; text-align: center; }
         .partner-card:hover { border-color: #2563eb; transform: translateY(-2px); box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1); }
@@ -51,10 +51,11 @@
                         <span class="text-[10px] font-bold text-blue-600 tracking-[0.3em] uppercase">Private Limited</span>
                     </div>
                 </a>
-                <div class="hidden md:flex items-center space-x-6 lg:space-x-8 text-sm font-semibold uppercase tracking-wider">
+                <div class="hidden md:flex items-center space-x-5 lg:space-x-7 text-sm font-semibold uppercase tracking-wider">
                     <a href="about/" class="hover:text-blue-600 transition">About</a>
                     <a href="aluminium-hydroxide-gel-paste/" class="hover:text-blue-600 transition">ALP</a>
                     <a href="magnesium-hydroxide-paste/" class="hover:text-blue-600 transition">MGP</a>
+                    <a href="#facility" class="hover:text-blue-600 transition">Facility</a>
                     <a href="#applications" class="hover:text-blue-600 transition">Applications</a>
                     <a href="#faq" class="hover:text-blue-600 transition">FAQ</a>
                     <a href="#contact" class="bg-blue-900 text-white px-5 py-2 rounded-lg hover:bg-blue-800 transition">Contact</a>
@@ -67,6 +68,7 @@
                 <a href="about/" class="block px-2 py-3 rounded hover:bg-slate-50 hover:text-blue-600">About</a>
                 <a href="aluminium-hydroxide-gel-paste/" class="block px-2 py-3 rounded hover:bg-slate-50 hover:text-blue-600">Aluminium Hydroxide Gel Paste</a>
                 <a href="magnesium-hydroxide-paste/" class="block px-2 py-3 rounded hover:bg-slate-50 hover:text-blue-600">Magnesium Hydroxide Paste</a>
+                <a href="#facility" class="block px-2 py-3 rounded hover:bg-slate-50 hover:text-blue-600">Inside Our Facility</a>
                 <a href="#applications" class="block px-2 py-3 rounded hover:bg-slate-50 hover:text-blue-600">Applications</a>
                 <a href="#faq" class="block px-2 py-3 rounded hover:bg-slate-50 hover:text-blue-600">FAQ</a>
                 <a href="#contact" class="block px-2 py-3 rounded bg-blue-900 text-white text-center">Contact Us</a>
@@ -178,6 +180,53 @@
                     <h3 class="font-bold text-lg text-slate-900 mb-2">Cosmetic &amp; Personal Care</h3>
                     <p class="text-slate-600 text-sm">High-purity Magnesium Hydroxide is used in deodorants, skincare and personal-care formulations as a buffering and absorbent agent.</p>
                 </div>
+            </div>
+        </div>
+    </section>
+
+    <section id="facility" class="py-16 md:py-24 bg-slate-100">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="text-center mb-10 md:mb-14">
+                <h2 class="text-3xl md:text-4xl font-bold text-blue-900 mb-3 uppercase tracking-tighter">Inside Our Facility</h2>
+                <p class="text-slate-500 max-w-2xl mx-auto text-base md:text-lg">A look at the equipment producing 610 metric tonnes of pharmaceutical-grade APIs every month at our Tarapur, Palghar plant.</p>
+            </div>
+            <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+                <figure class="rounded-xl overflow-hidden bg-white shadow-sm border border-slate-200">
+                    <div class="aspect-[4/5] bg-slate-200">
+                        <img src="filter-press.jpg" alt="Filter press separating API paste from process water" loading="lazy" class="w-full h-full object-cover">
+                    </div>
+                    <figcaption class="p-3 sm:p-4">
+                        <p class="font-bold text-sm sm:text-base text-slate-900">Filter Press</p>
+                        <p class="text-xs sm:text-sm text-slate-500 mt-1">Separates the gel paste from process water at production scale.</p>
+                    </figcaption>
+                </figure>
+                <figure class="rounded-xl overflow-hidden bg-white shadow-sm border border-slate-200">
+                    <div class="aspect-[4/5] bg-slate-200">
+                        <img src="filter-action.jpg" alt="Filter press in operation with paste flowing through filter cloths" loading="lazy" class="w-full h-full object-cover">
+                    </div>
+                    <figcaption class="p-3 sm:p-4">
+                        <p class="font-bold text-sm sm:text-base text-slate-900">In Operation</p>
+                        <p class="text-xs sm:text-sm text-slate-500 mt-1">Colour-coded valves dedicated to each product line.</p>
+                    </figcaption>
+                </figure>
+                <figure class="rounded-xl overflow-hidden bg-white shadow-sm border border-slate-200">
+                    <div class="aspect-[4/5] bg-slate-200">
+                        <img src="blender.jpg" alt="4500 kg capacity stainless steel blender for API homogenisation" loading="lazy" class="w-full h-full object-cover">
+                    </div>
+                    <figcaption class="p-3 sm:p-4">
+                        <p class="font-bold text-sm sm:text-base text-slate-900">4500 kg Blender</p>
+                        <p class="text-xs sm:text-sm text-slate-500 mt-1">Stainless steel blender for batch homogenisation.</p>
+                    </figcaption>
+                </figure>
+                <figure class="rounded-xl overflow-hidden bg-white shadow-sm border border-slate-200">
+                    <div class="aspect-[4/5] bg-slate-200">
+                        <img src="reaction-tank.jpg" alt="13,000 litre aluminium hydroxide reaction tank" loading="lazy" class="w-full h-full object-cover">
+                    </div>
+                    <figcaption class="p-3 sm:p-4">
+                        <p class="font-bold text-sm sm:text-base text-slate-900">13,000 L Reaction Tank</p>
+                        <p class="text-xs sm:text-sm text-slate-500 mt-1">Production-scale reactor for Aluminium Hydroxide synthesis.</p>
+                    </figcaption>
+                </figure>
             </div>
         </div>
     </section>
