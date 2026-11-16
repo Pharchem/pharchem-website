@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Attendance Register | Pharchem</title>
+    <meta name="robots" content="noindex, nofollow">
+    <link rel="icon" type="image/png" href="../logo.png">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap">
+    <link rel="stylesheet" href="../styles.css">
+    <script>
+        // Staff shortcut: forward to the Attendance Register app, keeping any #tab in the URL.
+        var APP = "https://claude.ai/artifact/91pBC1Pe7qGhDeu1Zg6Ywu";
+        location.replace(APP + location.hash);
+    </script>
+</head>
+<body class="bg-slate-50 text-slate-900 font-sans min-h-screen flex items-center justify-center px-4">
+    <main class="w-full max-w-md bg-white border border-slate-200 rounded-2xl shadow-sm p-8 text-center">
+        <img src="../logo.png" alt="Pharchem Private Limited" class="h-10 w-auto mx-auto mb-6">
+        <h1 class="text-2xl font-extrabold text-blue-900 tracking-tight">Attendance Register</h1>
+        <p class="text-slate-600 mt-2 mb-6">Opening the attendance app&hellip; If nothing happens, use the button below.</p>
+        <a id="openApp" href="https://claude.ai/artifact/91pBC1Pe7qGhDeu1Zg6Ywu" class="inline-block w-full bg-blue-900 text-white font-bold py-3 rounded-xl hover:bg-blue-800 transition">Open Attendance Register</a>
+        <p class="text-xs text-slate-500 mt-6">For Pharchem staff only.</p>
+    </main>
+    <script>document.getElementById('openApp').href = APP + location.hash;</script>
+</body>
+</html>
