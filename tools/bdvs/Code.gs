@@ -22,6 +22,13 @@ var MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oc
 
 var ROLES = ['PRD', 'QC', 'QA', 'ADMIN'];
 
+var PRODUCTS = {
+  ALP: 'Aluminium Hydroxide Gel Paste',
+  MGP: 'Magnesium Hydroxide Paste'
+};
+
+var MASTER_KINDS = { BMR: 'BMR', STP: 'STP', SPEC: 'Specification', COA: 'COA format' };
+
 var DOC_TYPES = {
   BMR_BPR: { label: 'BMR / BPR (filled, scanned)', dept: 'PRD' },
   COA_RAW: { label: 'COA + Raw data / Analytical protocol', dept: 'QC' }
@@ -30,8 +37,8 @@ var DOC_TYPES = {
 var SHEETS = {
   Users: ['id', 'name', 'username', 'email', 'role', 'active', 'salt', 'pwHash', 'mustChange',
     'pwChangedAt', 'failed', 'lockedUntil', 'createdAt', 'createdBy'],
-  Batches: ['id', 'product', 'batchNo', 'batchSize', 'dispatchDate', 'invoiceNo', 'customer', 'market',
-    'site', 'remarks', 'status', 'registeredAt', 'registeredBy', 'closedAt', 'closedBy', 'closeRemarks'],
+  Batches: ['id', 'productCode', 'product', 'batchNo', 'batchSize', 'dispatchDate', 'invoiceNo', 'customer', 'market',
+    'site', 'remarks', 'status', 'registeredAt', 'registeredBy', 'closedAt', 'closedBy', 'closeRemarks', 'masterDocs'],
   Documents: ['id', 'batchId', 'batchNo', 'product', 'type', 'dept', 'dueAt', 'status', 'currentVersion',
     'rejectCount', 'firstUploadAt', 'lateHours', 'verifiedAt', 'hardcopyDueAt', 'hardcopyReceivedAt',
     'lastRejectedAt', 'updatedAt'],
@@ -45,6 +52,10 @@ var SHEETS = {
     'condition', 'location', 'discrepancy', 'discrepancyText', 'status', 'recordedAt', 'recordedBy',
     'resolvedAt', 'resolvedBy', 'resolution'],
   Holidays: ['date', 'name', 'addedBy', 'addedAt'],
+  DocMaster: ['id', 'productCode', 'kind', 'number', 'title', 'customerHint', 'batchSize', 'fileId', 'url', 'folderPath',
+    'active', 'importedAt'],
+  CustomerProfiles: ['key', 'productCode', 'customer', 'bmrId', 'stpId', 'specId', 'coaId', 'batchSize', 'market',
+    'updatedAt', 'updatedBy'],
   Checklists: ['id', 'docType', 'item', 'order', 'active'],
   Settings: ['key', 'value', 'description'],
   ReminderLog: ['id', 'key', 'type', 'refId', 'batchNo', 'to', 'cc', 'subject', 'sentAt', 'status', 'error'],
@@ -73,45 +84,54 @@ var DEFAULT_SETTINGS = {
   SESSION_TIMEOUT_MIN: ['15', 'Log out after this many minutes of inactivity'],
   PASSWORD_EXPIRY_DAYS: ['90', 'Force password change after this many days (0 = never)'],
   LOCKOUT_ATTEMPTS: ['5', 'Lock the account after this many failed logins'],
-  APP_URL: ['', 'Web app URL used in email links (filled automatically when possible)']
+  APP_URL: ['', 'Web app URL used in email links (filled automatically when possible)'],
+  GMP_FOLDER_ID: ['', 'Google Drive ID of the GMP folder (BMRs, STPs, specifications, COA formats) used to auto-fill batch documents']
 };
 
-// Seeded from the Pharchem BMR format (e.g. ALP-BMR, MFR PC/MFR/ALP/010) and COA format
-// (PCF/PR/080/02). QA can edit, add or deactivate items in the app (Settings > Checklists).
+// Seeded from Pharchem GMP documents: SOPs QAGE/033 (approval & release of batch),
+// QAGE/043 (GDP & data integrity), QAGE/047 (document issuance & retrieval),
+// QAGE/054 (checking of analytical report & data), the ALP/MGP BMR formats and the
+// COA format PCF/PR/080. QA can edit, add or deactivate items in the app (Settings).
 var DEFAULT_CHECKLISTS = {
   BMR_BPR: [
-    'Index sheet complete; all pages as per index present, numbered and legible',
-    'BMR authorisation sheet: product, batch no., batch size, mfg/packing commencement & completion dates, area, previous product filled',
-    'Correct MFR No./Rev. referred; deviation and change control sheets marked Yes/No (attached where Yes)',
-    'Dispensing checklist completed (area & balance cleaning, previous product labels/containers, equipment cleaned)',
-    'Raw material requisition (production & stores copies): qty as per MFR, A.R. Nos. recorded, checked by Prod, verified by QA',
-    'Packing material requisition (production & stores copies): qty, A.R. Nos., signatures complete',
-    'Line clearance of manufacturing equipment: equipment IDs, date, previous product & batch, checked and QA verified; room cleaned / line cleared ticked',
-    'Batch processing steps: qty added, date, time, done by and checked by for every step',
-    'In-process results recorded and within limits (pH at each stage, filter press pressure, chloride / free chlorine of filtrate, clarity)',
-    'Packing material line clearance, packing, labelling, sampling and sealing records signed with date/time',
+    'Controlled copy: BMR first page signed by QA; "ISSUED BY QA" (blue) and "CONTROLLED COPY" (green) stamps on all pages (QAGE/043, 047)',
+    'Index sheet complete; all pages as per index present, numbered consecutively and legible; any DUPLICATE / additional page issued and recorded by QA (PCF/QA/072)',
+    'BMR authorisation sheet: product, batch no. (as per QAGE/022), batch size, mfg & packing commencement / completion dates, area, previous product filled',
+    'Correct MFR No. / Rev. referred; deviation and change control marked Yes/No and attached where Yes (QAGE/025, QAGE/021)',
+    'Dispensing checklist complete (area & balance cleaning, previous product labels / containers, equipment cleaned)',
+    'Raw material and packing material requisitions (production & stores copies): qty as per MFR, A.R. Nos., checked by Production, verified by QA',
+    'Line clearance of manufacturing and packing operations recorded with equipment IDs, previous product & batch, verified by QA (QAGE/037)',
+    'Batch processing: qty added, date, time, done by and checked by recorded for every step at the time of activity',
+    'In-process results recorded and within limits (pH at each stage, filter press pressure, chloride / free chlorine of filtrate, clarity); IPQC checklist attached (QAGE/028)',
+    'Packing, labelling, sampling and sealing records signed with date/time (QAGE/014, QAGE/060)',
     'Control sample details and specimen label (batch no., mfg & expiry date) attached',
-    'Weight checking record of drums/bags complete and within limit',
-    'Packing material reconciliation and destruction record complete, cross-checked by QA',
-    'Batch yield / batch packing record calculated correctly and % yield within limit (NLT 98.00%)',
-    'Dispatch details (party, drums/bags, challan no., dispatch date, qty) match the dispatch',
-    'Material dispensing slips and listed attachments (IPQC checklist, analysis requisition slips, protocols, COA) attached',
-    'Corrections as per GDP (single line, initialled, dated, reason); no overwriting or blanks',
-    'Final BMR checked by Production and checked & released by QA with dates'
+    'Weight checking record of drums / bags complete and within limit',
+    'Packing material reconciliation and destruction record complete and cross-checked by QA',
+    'Batch yield record calculated correctly; % yield within limit (NLT 98.00%)',
+    'Dispatch details (party, drums / bags, challan no., dispatch date, qty) match the actual dispatch',
+    'Dispensing slips and listed attachments (analysis requisition slips, protocols, COA bulk & finished) attached',
+    'GDP: correct ink colour (blue Production, green QA); dates as DD.MM.YYYY; no blank columns (NA with sign & date); no ditto marks (QAGE/043)',
+    'Corrections by single line with sign, date and justification; no overwriting, white ink or back-dating (QAGE/043)',
+    'Three-level review complete: done by / checked by / approved by; final BMR checked by Production and checked & released by QA',
+    'All deviations / incidents for the batch closed before release (QAGE/033)'
   ],
   COA_RAW: [
-    'COA format no., customer name, A.R. No. and report date correct',
-    'Product name, batch no. and batch size match the BMR and dispatch',
-    'Dates consistent: manufacturing, sample receipt, analysis start / completion, retest and expiry',
-    'STP / specification number and revision correct',
-    'All tests as per specification reported (appearance, pH, solid content, LOD, NaCl, chloride, sulphate, heavy metals, iron, HCl insoluble, particle size, assay, micro as applicable)',
-    'Each result within the specification limit and transcribed correctly from the raw data',
-    'Raw data / analytical protocols attached (chemical bulk & finished, microbial) with readings, weights and calculations',
-    'Calculations cross-checked; units and reporting format correct',
-    'Instrument / equipment IDs and calibration status recorded in raw data',
+    'COA on current format (PCF/PR/080) with correct customer, A.R. No., report date and STP / specification no. & revision',
+    'Product, batch no. and batch size match the BMR and dispatch; mfg, sample receipt, analysis start / completion, retest and expiry dates consistent',
+    'Analysis done as per current valid specification and STP (QAGE/054)',
+    'All tests per specification reported; each result within limit and transcribed correctly from the raw data',
+    'Raw data recorded in raw data sheet / protocol (bulk & finished, chemical & microbial) for every test',
+    'Supportive printouts attached, signed and dated by the analyst (QAGE/043, 054)',
+    'Solution / reagent preparation records available for solutions used',
+    'Instruments and balances used were calibrated; instrument logbooks verified for working status (QAGE/054)',
+    'Working / reference standards used were valid',
+    'Calculations correct, with formula and units documented and independently checked (QAGE/043)',
+    'System suitability, chromatographic audit trail and integration checked (where applicable, else NA)',
     'Outsourced or pending test reports (e.g. lead content) attached and referenced on the COA',
-    'Compliance remark correctly struck (complies / does not comply); OOS/OOT references where applicable',
-    'Analyst, QC In-charge and QA signatures with dates; no overwriting'
+    'GDP in QC records: black ink, no overwriting, corrections with sign / date / justification, no blank columns',
+    'Analyst, QC In-charge (verified) and QA signatures with dates; compliance decision (complies / does not comply) recorded',
+    'QA reviewed intermediate & final results against previous year trend data from APQR (QAGE/033 Rev. 05)',
+    'Release intimation / bulk release slip and Batch Release Note (PCF/QA/077) issued'
   ]
 };
 
@@ -239,6 +259,9 @@ var ACTIONS = {
   getBatch: { roles: ROLES, fn: apiGetBatch_ },
   getFile: { roles: ROLES, fn: apiGetFile_ },
   registerBatch: { roles: ['QA'], fn: apiRegisterBatch_, write: true },
+  bulkRegister: { roles: ['QA'], fn: apiBulkRegister_, write: true },
+  getDocMaster: { roles: ['QA', 'ADMIN'], fn: apiGetDocMaster_ },
+  importDocMaster: { roles: ['QA', 'ADMIN'], fn: apiImportDocMaster_, write: true },
   upload: { roles: ['PRD', 'QC'], fn: apiUpload_, write: true },
   decide: { roles: ['QA'], fn: apiDecide_, write: true },
   recordHardcopy: { roles: ['QA'], fn: apiRecordHardcopy_, write: true },
@@ -454,31 +477,90 @@ function apiGetFile_(user, p) {
 }
 
 function apiRegisterBatch_(user, p) {
+  return registerOne_(user, p);
+}
+
+/** p.rows = [{ batchNo, dispatchDate, customer, invoiceNo, batchSize?, product?, market?, site?, remarks? }] */
+function apiBulkRegister_(user, p) {
+  var rows = p.rows || [];
+  if (!rows.length) { throw new Error('Nothing to register.'); }
+  if (rows.length > 100) { throw new Error('Register at most 100 batches at a time.'); }
+  return rows.map(function (r, i) {
+    try {
+      var res = registerOne_(user, Object.assign({ client: p.client, fromBulk: true }, r));
+      return { row: i + 1, ok: true, batchNo: r.batchNo, dueAt: res.dueAt, masterDocs: res.masterDocs };
+    } catch (e) {
+      return { row: i + 1, ok: false, batchNo: r.batchNo, error: String(e.message || e) };
+    }
+  });
+}
+
+function productCodeOf_(product, batchNo) {
+  var bn = String(batchNo || '').trim().toUpperCase();
+  if (/^ALP/.test(bn)) { return 'ALP'; }
+  if (/^MGP/.test(bn)) { return 'MGP'; }
+  var pr = String(product || '').trim().toLowerCase();
+  if (PRODUCTS[pr.toUpperCase()]) { return pr.toUpperCase(); }
+  if (/alum/.test(pr)) { return 'ALP'; }
+  if (/magn/.test(pr)) { return 'MGP'; }
+  return '';
+}
+
+function registerOne_(user, p) {
+  var code = productCodeOf_(p.product, p.batchNo);
   var f = {
-    product: req_(p.product, 'Product name'),
+    productCode: code,
+    product: String(p.product || '').trim() && !PRODUCTS[String(p.product).trim().toUpperCase()] ? String(p.product).trim() : (PRODUCTS[code] || ''),
     batchNo: req_(p.batchNo, 'Batch number'),
-    batchSize: req_(p.batchSize, 'Batch size'),
-    dispatchDate: req_(p.dispatchDate, 'Dispatch date'),
+    batchSize: String(p.batchSize || '').trim(),
+    dispatchDate: normDate_(req_(p.dispatchDate, 'Dispatch date')),
     invoiceNo: req_(p.invoiceNo, 'Invoice / challan number'),
     customer: req_(p.customer, 'Customer / destination'),
-    market: req_(p.market, 'Market'),
-    site: req_(p.site, 'Plant / site'),
+    market: String(p.market || '').trim(),
+    site: String(p.site || '').trim() || 'Pharchem Pvt. Ltd.',
     remarks: String(p.remarks || '').trim()
   };
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(f.dispatchDate)) { throw new Error('Dispatch date must be a valid date.'); }
+  req_(f.product, 'Product (could not tell from the batch number)');
   if (f.dispatchDate > istYmd_(Date.now())) { throw new Error('Dispatch date cannot be in the future.'); }
   var dup = rows_('Batches').filter(function (b) {
     return norm_(b.batchNo) === norm_(f.batchNo) && norm_(b.product) === norm_(f.product);
   })[0];
   if (dup) { throw new Error('Batch ' + f.batchNo + ' of ' + f.product + ' is already registered.'); }
 
+  // Master documents: explicit choice > saved customer profile > best match in the GMP folder index.
+  var profileKey = code + '|' + customerKey_(f.customer);
+  var profile = rows_('CustomerProfiles').filter(function (x) { return x.key === profileKey; })[0];
+  var chosen = p.masterDocIds || {};
+  var md = {};
+  ['BMR', 'STP', 'SPEC', 'COA'].forEach(function (k) {
+    var id = chosen[k] !== undefined ? chosen[k] : (profile ? profile[{ BMR: 'bmrId', STP: 'stpId', SPEC: 'specId', COA: 'coaId' }[k]] : '');
+    if (id === undefined || id === null) { id = ''; }
+    if (!id && chosen[k] === undefined && !profile) { var m = bestMasterMatch_(code, k, f.customer); if (m) { id = m.id; } }
+    var doc = id ? findById_('DocMaster', id) : null;
+    md[k] = doc ? { id: doc.id, number: doc.number, title: doc.title, url: doc.url } : null;
+  });
+  if (!f.batchSize) {
+    f.batchSize = (profile && profile.batchSize) || (md.BMR && (findById_('DocMaster', md.BMR.id) || {}).batchSize) || '';
+  }
+  req_(f.batchSize, 'Batch size');
+  if (!f.market) { f.market = (profile && profile.market) || 'Domestic'; }
+
   var now = Date.now();
   var hol = holidayMap_();
   var due = uploadDeadline_(f.dispatchDate, hol);
   var b = Object.assign({ id: newId_('B'), status: 'AWAITING_DOCUMENTS', registeredAt: iso_(now),
-    registeredBy: user.name, closedAt: '', closedBy: '', closeRemarks: '' }, f);
+    registeredBy: user.name, closedAt: '', closedBy: '', closeRemarks: '', masterDocs: JSON.stringify(md) }, f);
   insert_('Batches', b);
-  audit_(user, 'BATCH_REGISTERED', 'Batch', b.id, b.batchNo, '', JSON.stringify(f), '', p.client);
+  audit_(user, p.fromBulk ? 'BATCH_REGISTERED_BULK' : 'BATCH_REGISTERED', 'Batch', b.id, b.batchNo, '',
+    JSON.stringify(f) + ' | master docs: ' + masterSummary_(md), '', p.client);
+
+  // Remember the customer's documents for next time.
+  if (code) {
+    var prof = { key: profileKey, productCode: code, customer: f.customer, bmrId: md.BMR ? md.BMR.id : '',
+      stpId: md.STP ? md.STP.id : '', specId: md.SPEC ? md.SPEC.id : '', coaId: md.COA ? md.COA.id : '',
+      batchSize: f.batchSize, market: f.market, updatedAt: iso_(now), updatedBy: user.name };
+    if (profile) { prof._row = profile._row; update_('CustomerProfiles', prof); } else { insert_('CustomerProfiles', prof); }
+  }
 
   Object.keys(DOC_TYPES).forEach(function (t) {
     var d = { id: newId_('D'), batchId: b.id, batchNo: b.batchNo, product: b.product, type: t,
@@ -487,14 +569,152 @@ function apiRegisterBatch_(user, p) {
       hardcopyReceivedAt: '', lastRejectedAt: '', updatedAt: iso_(now) };
     insert_('Documents', d);
     audit_(user, 'TASK_CREATED', 'Document', d.id, b.batchNo, '', DOC_TYPES[t].label + ' due ' + fmt_(due), '', p.client);
+    var refs = t === 'BMR_BPR' ? (md.BMR ? '<p>Master BMR: <b>' + esc_(md.BMR.title) + '</b></p>' : '')
+      : [md.STP ? 'STP: <b>' + esc_(md.STP.title) + '</b>' : '', md.SPEC ? 'Specification: <b>' + esc_(md.SPEC.title) + '</b>' : '',
+        md.COA ? 'COA format: <b>' + esc_(md.COA.title) + '</b>' : ''].filter(String).join('<br>');
     sendMail_('REG|' + d.id, 'REGISTERED', d.id, b.batchNo, deptEmails_(d.dept), deptEmails_('QA'),
       'Upload required: ' + DOC_TYPES[t].label + ' - Batch ' + b.batchNo,
       mailBody_('Batch dispatched - please upload the scanned document',
-        'Batch <b>' + esc_(b.batchNo) + '</b> of <b>' + esc_(b.product) + '</b> was dispatched on ' +
+        'Batch <b>' + esc_(b.batchNo) + '</b> of <b>' + esc_(b.product) + '</b> was dispatched to <b>' + esc_(b.customer) + '</b> on ' +
         fmtDate_(ymdToMs_(b.dispatchDate, 12)) + '. Please upload the scanned <b>' + DOC_TYPES[t].label +
-        '</b> before the deadline.', docFacts_(b, d, now)));
+        '</b> before the deadline.' + (refs ? '<div style="margin-top:8px">' + refs + '</div>' : ''), docFacts_(b, d, now)));
   });
-  return { id: b.id, dueAt: iso_(due) };
+  return { id: b.id, dueAt: iso_(due), masterDocs: md, batchSize: f.batchSize, product: f.product };
+}
+
+function masterSummary_(md) {
+  return ['BMR', 'STP', 'SPEC', 'COA'].map(function (k) { return k + '=' + (md[k] ? md[k].title : 'none'); }).join('; ');
+}
+
+/** Accepts YYYY-MM-DD, DD.MM.YYYY, DD/MM/YYYY, DD-MM-YYYY, DD-MMM-YYYY (also 2-digit years). */
+function normDate_(s) {
+  s = String(s).trim();
+  var m;
+  if ((m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/))) { return m[1] + '-' + pad_(+m[2]) + '-' + pad_(+m[3]); }
+  if ((m = s.match(/^(\d{1,2})[.\/-](\d{1,2})[.\/-](\d{2,4})$/))) {
+    var y = m[3].length === 2 ? '20' + m[3] : m[3];
+    return checkYmd_(y + '-' + pad_(+m[2]) + '-' + pad_(+m[1]), s);
+  }
+  if ((m = s.match(/^(\d{1,2})[.\/\- ]([A-Za-z]{3})[A-Za-z]*[.\/\- ](\d{2,4})$/))) {
+    var mi = MONTHS.map(function (x) { return x.toLowerCase(); }).indexOf(m[2].toLowerCase());
+    if (mi >= 0) { return checkYmd_((m[3].length === 2 ? '20' + m[3] : m[3]) + '-' + pad_(mi + 1) + '-' + pad_(+m[1]), s); }
+  }
+  throw new Error('Unrecognised date "' + s + '". Use DD.MM.YYYY.');
+}
+function checkYmd_(ymd, raw) {
+  if (istYmd_(ymdToMs_(ymd, 12)) !== ymd) { throw new Error('Invalid date "' + raw + '".'); }
+  return ymd;
+}
+
+// ---------------------------------------------------------------------------
+// GMP document master (index of BMRs, STPs, specifications and COA formats)
+// ---------------------------------------------------------------------------
+
+var CUSTOMER_NOISE_ = /\b(ltd|limited|pvt|private|ok|pending|new|old|correction|extra|batch|size|kgs?|lab|labs|laboratories|healthcare|healthc|health|pharma|pharmaceuticals?|life|science|sciences|india|for|the|and|ip|bp|usp|ih)\b|\d+(\.\d+)?\s*%|\d{1,2}\.\d{1,2}\.\d{2,4}|\(\d+\)|[0-9]+\s*kgs?/gi;
+
+function customerKey_(name) {
+  return String(name || '').toLowerCase().replace(/&/g, ' ').replace(CUSTOMER_NOISE_, ' ').replace(/[^a-z0-9]+/g, ' ').trim();
+}
+
+/** Classifies a GMP file name. Returns null if it is not a master BMR / STP / SPEC / COA format. */
+function classifyMasterFile_(title) {
+  var t = String(title).replace(/\.(docx?|pdf|xlsx?)$/i, '').trim();
+  var m;
+  if ((m = t.match(/^(ALP)-BMR-(\d+)-(.+)$/i))) {
+    var kg = (m[3].match(/(\d{4})\s*kg/i) || [])[1];
+    return { productCode: 'ALP', kind: 'BMR', number: 'ALP-BMR-' + m[2], hint: m[3], batchSize: kg ? kg + ' Kgs' : '3000 Kgs' };
+  }
+  if ((m = t.match(/^\d+-PC-BMR-(MGP)-(\d+)-?\s*(?:(\d+)\s*Kgs)?\s*-?\s*(.*)$/i))) {
+    return { productCode: 'MGP', kind: 'BMR', number: 'PC-BMR-MGP-' + m[2], hint: m[4] || 'General', batchSize: m[3] ? m[3] + ' Kgs' : '' };
+  }
+  if ((m = t.match(/^(\d+)-\s*(ALP|MGP)\s+STP\b\s*-?\s*(?:for\s+)?(.*)$/i))) {
+    return { productCode: m[2].toUpperCase(), kind: 'STP', number: m[2].toUpperCase() + ' STP ' + m[1], hint: m[3] || 'General' };
+  }
+  if ((m = t.match(/^(\d+)-\s*(ALP|MGP)\s+SPE\b\s*(?:for\s+)?(.*)$/i))) {
+    return { productCode: m[2].toUpperCase(), kind: 'SPEC', number: m[2].toUpperCase() + ' SPE ' + m[1], hint: m[3] || 'General' };
+  }
+  if ((m = t.match(/^PCF-FMR-(\d+)(?:-(\d+))?\s*-?\s*(ALP|MGP)\s*-?\s*(.*)$/i))) {
+    return { productCode: m[3].toUpperCase(), kind: 'COA', number: 'PCF/FMR/' + m[1] + (m[2] ? '/' + m[2] : ''), hint: m[4] || 'General' };
+  }
+  return null;
+}
+
+/** Walks the GMP folder (skipping Draft / Obsolete / New folder) and rebuilds the DocMaster index. */
+function apiImportDocMaster_(user, p) {
+  var folderId = String(p.folderId || setting_('GMP_FOLDER_ID') || '').trim();
+  var mm = folderId.match(/folders\/([A-Za-z0-9_-]+)/);
+  if (mm) { folderId = mm[1]; }
+  if (!folderId) { throw new Error('Set GMP_FOLDER_ID in Settings (the ID or link of the GMP folder).'); }
+  var root;
+  try { root = DriveApp.getFolderById(folderId); } catch (e) {
+    throw new Error('Cannot open the GMP folder. Share it (Viewer) with the Google account that deployed BDVS.');
+  }
+  if (folderId !== setting_('GMP_FOLDER_ID')) { setSetting_('GMP_FOLDER_ID', folderId); }
+  var found = [];
+  var skip = /^(draft|obsolete|new folder)$/i;
+  (function walk(folder, path, depth) {
+    if (depth > 6) { return; }
+    var files = folder.getFiles();
+    while (files.hasNext()) {
+      var f = files.next();
+      var name = f.getName();
+      if (/^~\$/.test(name)) { continue; }
+      var c = classifyMasterFile_(name);
+      if (c) { found.push({ c: c, f: f, name: name, path: path }); }
+    }
+    var subs = folder.getFolders();
+    while (subs.hasNext()) {
+      var sf = subs.next();
+      if (skip.test(sf.getName().trim()) || /draft|obsolete/i.test(sf.getName())) { continue; }
+      walk(sf, path + ' / ' + sf.getName(), depth + 1);
+    }
+  })(root, root.getName(), 0);
+
+  var existing = indexBy_(rows_('DocMaster'), 'fileId');
+  var now = iso_(Date.now());
+  var seen = {};
+  var added = 0, updated = 0;
+  found.forEach(function (x) {
+    var id = x.f.getId();
+    seen[id] = true;
+    var rec = existing[id];
+    var obj = { productCode: x.c.productCode, kind: x.c.kind, number: x.c.number, title: x.name.replace(/\.(docx?|pdf|xlsx?)$/i, ''),
+      customerHint: x.c.hint.trim(), batchSize: x.c.batchSize || '', fileId: id, url: x.f.getUrl(), folderPath: x.path,
+      active: 'Y', importedAt: now };
+    if (rec) { obj.id = rec.id; obj._row = rec._row; update_('DocMaster', obj); updated++; }
+    else { obj.id = newId_('M'); insert_('DocMaster', obj); added++; }
+  });
+  var retired = 0;
+  rows_('DocMaster').forEach(function (r) {
+    if (!seen[r.fileId] && r.active === 'Y') { r.active = 'N'; update_('DocMaster', r); retired++; }
+  });
+  audit_(user, 'DOC_MASTER_IMPORTED', 'DocMaster', folderId, '', '',
+    found.length + ' documents (' + added + ' new, ' + updated + ' refreshed, ' + retired + ' no longer in folder)', '', p.client);
+  return { total: found.length, added: added, updated: updated, retired: retired };
+}
+
+function apiGetDocMaster_() {
+  return {
+    docs: rows_('DocMaster').filter(function (d) { return d.active === 'Y'; }).map(strip_),
+    profiles: rows_('CustomerProfiles').map(strip_),
+    folderId: setting_('GMP_FOLDER_ID')
+  };
+}
+
+/** Best master document of a kind for a customer: shared tokens with the file's customer hint, else "General". */
+function bestMasterMatch_(code, kind, customer) {
+  var key = customerKey_(customer);
+  var tokens = key.split(' ').filter(function (t) { return t.length >= 3; });
+  var list = rows_('DocMaster').filter(function (d) { return d.active === 'Y' && d.productCode === code && d.kind === kind; });
+  var best = null, bestScore = 0;
+  list.forEach(function (d) {
+    var hk = customerKey_(d.customerHint);
+    var score = 0;
+    tokens.forEach(function (t) { if ((' ' + hk + ' ').indexOf(' ' + t) >= 0) { score += t.length; } });
+    if (score > bestScore) { best = d; bestScore = score; }
+  });
+  if (best) { return best; }
+  return list.filter(function (d) { return /general/i.test(d.customerHint); })[0] || null;
 }
 
 /**
@@ -1073,6 +1293,7 @@ function docView_(d, versions, now) {
 
 function batchView_(b, docs, now) {
   var x = strip_(b);
+  x.masterDocs = parseJson_(b.masterDocs, {});
   x.docs = docs;
   x.overdue = docs.some(function (d) { return d.overdue; });
   return x;
@@ -1536,8 +1757,9 @@ function withLock_(fn) {
 }
 
 function sha256Hex_(input) {
-  var digest = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, input, Utilities.Charset.UTF_8);
-  if (typeof input !== 'string') { digest = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, input); }
+  var digest = typeof input === 'string'
+    ? Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, input, Utilities.Charset.UTF_8)
+    : Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, input);
   return digest.map(function (b) { return ((b & 255) + 256).toString(16).slice(1); }).join('');
 }
 

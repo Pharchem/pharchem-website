@@ -1,0 +1,1209 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<base target="_top">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BDVS - Batch Document Verification</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<style>
+:root{--bg:#f1f5f9;--card:#fff;--ink:#0f172a;--mut:#64748b;--line:#e2e8f0;--pri:#1e3a8a;--pri2:#1d4ed8;
+--ok:#15803d;--okb:#dcfce7;--warn:#b45309;--warnb:#fef3c7;--bad:#b91c1c;--badb:#fee2e2;--info:#1d4ed8;--infob:#dbeafe;--tealb:#ccfbf1;--teal:#0f766e;--grayb:#f1f5f9}
+*{box-sizing:border-box}
+body{margin:0;font:14px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;background:var(--bg);color:var(--ink)}
+button,input,select,textarea{font:inherit}
+header{background:var(--pri);color:#fff;padding:10px 18px;display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+header .brand{font-weight:700;font-size:16px}
+header .sub{opacity:.8;font-size:12px}
+header .sp{flex:1}
+header .who{font-size:13px;text-align:right}
+header button{background:rgba(255,255,255,.15);color:#fff;border:1px solid rgba(255,255,255,.3);border-radius:6px;padding:5px 10px;cursor:pointer}
+nav{background:#fff;border-bottom:1px solid var(--line);display:flex;gap:2px;padding:0 12px;overflow-x:auto}
+nav a{padding:11px 14px;color:var(--mut);text-decoration:none;border-bottom:3px solid transparent;white-space:nowrap;cursor:pointer;font-weight:500}
+nav a.on{color:var(--pri);border-bottom-color:var(--pri)}
+nav a .n{background:var(--bad);color:#fff;border-radius:10px;padding:0 6px;font-size:11px;margin-left:4px}
+main{padding:18px;max-width:1400px;margin:0 auto}
+h2{margin:0 0 12px;font-size:19px}
+h3{margin:18px 0 8px;font-size:15px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:16px;margin-bottom:14px}
+.tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;margin-bottom:14px}
+.tile{background:#fff;border:1px solid var(--line);border-radius:10px;padding:12px;cursor:pointer}
+.tile .v{font-size:26px;font-weight:700}
+.tile .l{color:var(--mut);font-size:12px}
+.tile.red .v{color:var(--bad)} .tile.amb .v{color:var(--warn)} .tile.grn .v{color:var(--ok)} .tile.blu .v{color:var(--info)}
+table{width:100%;border-collapse:collapse;background:#fff}
+th,td{padding:8px 9px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}
+th{background:#f8fafc;font-size:12px;color:var(--mut);font-weight:600;text-transform:uppercase;letter-spacing:.02em;position:sticky;top:0}
+tr.over td:first-child{box-shadow:inset 3px 0 0 var(--bad)}
+.tw{overflow:auto;border:1px solid var(--line);border-radius:10px;max-height:70vh}
+.chip{display:inline-block;padding:2px 8px;border-radius:999px;font-size:12px;font-weight:600;white-space:nowrap}
+.c-ok{background:var(--okb);color:var(--ok)} .c-warn{background:var(--warnb);color:var(--warn)} .c-bad{background:var(--badb);color:var(--bad)}
+.c-info{background:var(--infob);color:var(--info)} .c-teal{background:var(--tealb);color:var(--teal)} .c-gray{background:var(--grayb);color:var(--mut)}
+.small{font-size:12px;color:var(--mut)}
+.btn{background:var(--pri);color:#fff;border:0;border-radius:7px;padding:8px 14px;cursor:pointer;font-weight:600}
+.btn:hover{background:var(--pri2)} .btn:disabled{opacity:.45;cursor:not-allowed}
+.btn.sec{background:#fff;color:var(--pri);border:1px solid var(--pri)}
+.btn.ok{background:var(--ok)} .btn.bad{background:var(--bad)} .btn.sm{padding:4px 9px;font-size:12px}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.grid2{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:12px}
+label.f{display:block;font-size:12px;font-weight:600;color:var(--mut);margin-bottom:3px}
+input[type=text],input[type=password],input[type=number],input[type=date],input[type=email],select,textarea{width:100%;padding:8px 10px;border:1px solid #cbd5e1;border-radius:7px;background:#fff}
+textarea{min-height:60px}
+.err{background:var(--badb);color:var(--bad);padding:9px 12px;border-radius:7px;margin:8px 0;white-space:pre-wrap}
+.okmsg{background:var(--okb);color:var(--ok);padding:9px 12px;border-radius:7px;margin:8px 0}
+.login{max-width:380px;margin:9vh auto}
+.modal-bg{position:fixed;inset:0;background:rgba(15,23,42,.55);display:flex;align-items:flex-start;justify-content:center;z-index:50;overflow:auto;padding:24px 10px}
+.modal{background:#fff;border-radius:12px;width:min(820px,100%);padding:18px 20px;box-shadow:0 20px 50px rgba(0,0,0,.3)}
+.modal.wide{width:min(1400px,100%)}
+.modal .mh{display:flex;align-items:center;gap:10px;margin-bottom:10px}
+.modal .mh h2{margin:0;flex:1}
+.x{background:none;border:0;font-size:24px;cursor:pointer;color:var(--mut)}
+.docs{display:grid;grid-template-columns:repeat(auto-fill,minmax(360px,1fr));gap:12px}
+.doc{border:1px solid var(--line);border-radius:10px;padding:12px}
+.facts{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:6px 14px;margin-bottom:8px}
+.facts div b{display:block;font-size:11px;color:var(--mut);font-weight:600;text-transform:uppercase}
+.split{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(320px,1fr);gap:14px}
+@media(max-width:900px){.split{grid-template-columns:1fr}}
+.viewer{border:1px solid var(--line);border-radius:10px;background:#334155;display:flex;flex-direction:column;height:78vh}
+.viewer .vt{background:#1e293b;color:#fff;padding:6px 8px;display:flex;gap:6px;align-items:center;flex-wrap:wrap;border-radius:10px 10px 0 0}
+.viewer .vt button,.viewer .vt select{background:#334155;color:#fff;border:1px solid #475569;border-radius:5px;padding:3px 8px;cursor:pointer}
+.viewer .cv{flex:1;overflow:auto;text-align:center;padding:10px}
+.viewer canvas{background:#fff;box-shadow:0 2px 10px rgba(0,0,0,.4)}
+.ckl{max-height:52vh;overflow:auto;border:1px solid var(--line);border-radius:8px}
+.ck{padding:8px 10px;border-bottom:1px solid var(--line)}
+.ck .q{font-weight:500;margin-bottom:4px}
+.ck .opts{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+.ck .opts label{cursor:pointer}
+.ck.no{background:#fff1f2} .ck.na{background:#f8fafc}
+.ck input[type=text]{padding:4px 8px;font-size:12px}
+.obs td{padding:4px}
+.muted{color:var(--mut)}
+.spin{display:inline-block;width:16px;height:16px;border:2px solid #cbd5e1;border-top-color:var(--pri);border-radius:50%;animation:s 1s linear infinite;vertical-align:middle}
+@keyframes s{to{transform:rotate(360deg)}}
+.toast{position:fixed;bottom:18px;right:18px;background:#0f172a;color:#fff;padding:10px 16px;border-radius:8px;z-index:99;max-width:420px}
+.timeline{font-size:12px;max-height:260px;overflow:auto;border:1px solid var(--line);border-radius:8px}
+.timeline div{padding:5px 9px;border-bottom:1px solid var(--line)}
+#print-area{display:none}
+@media print{body>*{display:none!important}#print-area{display:block!important;color:#000;padding:10mm;font-size:13px}#print-area table td,#print-area table th{border:1px solid #000}}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<div id="modals"></div>
+<div id="print-area"></div>
+
+<script>
+/* ======================= core ======================= */
+var S = { token: null, boot: null, dash: null, view: null, idle: null, pollTimer: null };
+var IST = 330 * 60000;
+var MON = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+var DOC_STATUS = {
+  PENDING_UPLOAD: ['Pending upload', 'c-warn'],
+  UNDER_VERIFICATION: ['Under QA verification', 'c-info'],
+  REJECTED: ['Rejected - re-upload', 'c-bad'],
+  HARDCOPY_PENDING: ['Verified OK - hardcopy pending', 'c-teal'],
+  HARDCOPY_DISCREPANCY: ['Hardcopy discrepancy', 'c-bad'],
+  HARDCOPY_RECEIVED: ['Verified & hardcopy received', 'c-ok']
+};
+var BATCH_STATUS = {
+  AWAITING_DOCUMENTS: ['Awaiting documents', 'c-warn'],
+  UNDER_VERIFICATION: ['Under verification', 'c-info'],
+  REJECTED_REUPLOAD: ['Rejected - awaiting re-upload', 'c-bad'],
+  AWAITING_HARDCOPY: ['Awaiting hardcopy', 'c-teal'],
+  READY_TO_CLOSE: ['Ready to close', 'c-ok'],
+  CLOSED: ['Closed - BDV completed', 'c-gray']
+};
+var OVERDUE = { UPLOAD: 'Upload overdue', VERIFICATION: 'Verification overdue (>24 h)', HARDCOPY: 'Hardcopy overdue' };
+
+function $(id) { return document.getElementById(id); }
+function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+function pad(n) { return (n < 10 ? '0' : '') + n; }
+function ms(iso) { return iso ? new Date(iso).getTime() : NaN; }
+function fD(v) { var t = typeof v === 'number' ? v : ms(v); if (isNaN(t)) return '-'; var d = new Date(t + IST); return pad(d.getUTCDate()) + '-' + MON[d.getUTCMonth()] + '-' + d.getUTCFullYear(); }
+function fDT(v) { var t = typeof v === 'number' ? v : ms(v); if (isNaN(t)) return '-'; var d = new Date(t + IST); return fD(t) + ' ' + pad(d.getUTCHours()) + ':' + pad(d.getUTCMinutes()); }
+function fYmd(ymd) { return ymd ? fD(new Date(ymd + 'T12:00:00+05:30').getTime()) : '-'; }
+function todayYmd() { var d = new Date(Date.now() + IST); return d.getUTCFullYear() + '-' + pad(d.getUTCMonth() + 1) + '-' + pad(d.getUTCDate()); }
+function hrs(x) { var h = Math.round(Math.abs(x) / 3600000); return h >= 48 ? Math.floor(h / 24) + 'd ' + (h % 24) + 'h' : h + 'h'; }
+function left(iso) {
+  var d = ms(iso) - Date.now();
+  if (isNaN(d)) return '';
+  return d >= 0 ? '<span class="small">' + hrs(d) + ' left</span>' : '<span class="small" style="color:var(--bad);font-weight:600">' + hrs(d) + ' overdue</span>';
+}
+function chip(map, k) { var m = map[k] || [k, 'c-gray']; return '<span class="chip ' + m[1] + '">' + esc(m[0]) + '</span>'; }
+function toast(t) { var el = document.createElement('div'); el.className = 'toast'; el.textContent = t; document.body.appendChild(el); setTimeout(function () { el.remove(); }, 4000); }
+function role() { return S.boot ? S.boot.user.role : ''; }
+function isQA() { return role() === 'QA'; }
+
+function rpc(fn) {
+  var args = Array.prototype.slice.call(arguments, 1);
+  return new Promise(function (res, rej) {
+    var r = google.script.run.withSuccessHandler(res).withFailureHandler(function (e) { rej(new Error(e && e.message ? e.message : String(e))); });
+    r[fn].apply(r, args);
+  });
+}
+function call(action, payload) {
+  payload = Object.assign({ client: navigator.userAgent.slice(0, 150) }, payload || {});
+  return rpc('api', S.token, action, payload).then(function (r) {
+    if (r.ok) { bumpIdle(); return r.data; }
+    if (r.error === 'SESSION_EXPIRED') { endSession('Your session expired. Please log in again.'); }
+    if (r.error === 'PASSWORD_CHANGE_REQUIRED') { renderChangePw(true); }
+    throw new Error(r.error);
+  });
+}
+function busy(btn, on, label) {
+  if (!btn) return;
+  if (on) { btn.dataset.l = btn.innerHTML; btn.disabled = true; btn.innerHTML = '<span class="spin"></span> ' + (label || 'Please wait'); }
+  else { btn.disabled = false; if (btn.dataset.l) btn.innerHTML = btn.dataset.l; }
+}
+function showErr(id, e) { var el = $(id); if (el) el.innerHTML = e ? '<div class="err">' + esc(e.message || e) + '</div>' : ''; }
+
+/* ======================= modals ======================= */
+function openModal(html, wide) {
+  var bg = document.createElement('div');
+  bg.className = 'modal-bg';
+  bg.innerHTML = '<div class="modal' + (wide ? ' wide' : '') + '">' + html + '</div>';
+  $('modals').appendChild(bg);
+  return bg;
+}
+function closeModal(el) {
+  var bg = el && el.closest ? el.closest('.modal-bg') : null;
+  if (bg) bg.remove(); else { var all = document.querySelectorAll('.modal-bg'); if (all.length) all[all.length - 1].remove(); }
+}
+function mh(title) { return '<div class="mh"><h2>' + title + '</h2><button class="x" onclick="closeModal(this)">&times;</button></div>'; }
+function askText(title, labelText, opts) {
+  opts = opts || {};
+  return new Promise(function (resolve) {
+    var bg = openModal(mh(esc(title)) + '<label class="f">' + esc(labelText) + '</label>' +
+      (opts.password ? '<input type="password" id="ask_in">' : '<textarea id="ask_in"></textarea>') +
+      '<div id="ask_err"></div><div class="row" style="margin-top:12px;justify-content:flex-end"><button class="btn sec" id="ask_c">Cancel</button><button class="btn" id="ask_ok">OK</button></div>');
+    $('ask_c').onclick = function () { bg.remove(); resolve(null); };
+    $('ask_ok').onclick = function () {
+      var v = $('ask_in').value.trim();
+      if (!v && !opts.optional) { showErr('ask_err', 'Required.'); return; }
+      bg.remove(); resolve(v);
+    };
+    $('ask_in').focus();
+  });
+}
+function confirmBox(title, text) {
+  return new Promise(function (resolve) {
+    var bg = openModal(mh(esc(title)) + '<p style="white-space:pre-wrap">' + esc(text) + '</p><div class="row" style="justify-content:flex-end"><button class="btn sec" id="cf_n">Cancel</button><button class="btn" id="cf_y">Continue</button></div>');
+    $('cf_n').onclick = function () { bg.remove(); resolve(false); };
+    $('cf_y').onclick = function () { bg.remove(); resolve(true); };
+  });
+}
+
+/* ======================= session ======================= */
+function bumpIdle() {
+  clearTimeout(S.idle);
+  if (!S.token) return;
+  var mins = S.boot ? S.boot.config.sessionTimeoutMin : 15;
+  S.idle = setTimeout(function () { endSession('Logged out after ' + mins + ' minutes of inactivity.'); }, mins * 60000);
+}
+['click', 'keydown'].forEach(function (ev) { document.addEventListener(ev, function () { if (S.token) bumpIdle(); }); });
+
+function endSession(msg) {
+  if (S.token) { rpc('logout', S.token).catch(function () {}); }
+  S.token = null; S.boot = null; S.dash = null; S.view = null; S.batch = null; S.master = null; S.navCounts = null;
+  try { sessionStorage.removeItem('bdvs_t'); } catch (e) {}
+  clearTimeout(S.idle); clearInterval(S.pollTimer);
+  $('modals').innerHTML = '';
+  renderLogin(msg);
+}
+
+function renderLogin(msg) {
+  $('app').innerHTML = '<div class="login card"><h2 style="color:var(--pri)">Batch Document Verification</h2>' +
+    '<p class="small">BMR / BPR &middot; COA &amp; raw data &middot; QA verification &middot; hardcopy &middot; batch data verification</p>' +
+    (msg ? '<div class="okmsg">' + esc(msg) + '</div>' : '') +
+    '<form id="lf"><label class="f">Username</label><input type="text" id="lu" autocomplete="username" autofocus>' +
+    '<label class="f" style="margin-top:10px">Password</label><input type="password" id="lp" autocomplete="current-password">' +
+    '<div id="lerr"></div><button class="btn" style="width:100%;margin-top:14px" id="lb">Log in</button></form>' +
+    '<p class="small" style="margin-top:14px">Use your personal login. Never share your password: every action is recorded against your name in the audit trail.</p></div>';
+  $('lf').onsubmit = function (e) {
+    e.preventDefault();
+    var b = $('lb'); busy(b, true, 'Logging in');
+    rpc('login', $('lu').value, $('lp').value, navigator.userAgent.slice(0, 150)).then(function (r) {
+      if (!r.ok) throw new Error(r.error);
+      S.token = r.data.token;
+      try { sessionStorage.setItem('bdvs_t', S.token); } catch (e) {}
+      return start();
+    }).catch(function (e) { busy(b, false); showErr('lerr', e); });
+  };
+}
+
+function renderChangePw(forced) {
+  var html = mh(forced ? 'Set a new password' : 'Change password') +
+    (forced ? '<p>You must set a new password before continuing (first login, reset or expiry).</p>' : '') +
+    '<label class="f">Current / temporary password</label><input type="password" id="cp0">' +
+    '<label class="f" style="margin-top:8px">New password (min 8 characters, letters and digits)</label><input type="password" id="cp1">' +
+    '<label class="f" style="margin-top:8px">Repeat new password</label><input type="password" id="cp2">' +
+    '<div id="cperr"></div><div class="row" style="justify-content:flex-end;margin-top:12px">' +
+    (forced ? '<button class="btn sec" onclick="endSession()">Log out</button>' : '') + '<button class="btn" id="cpb">Save password</button></div>';
+  $('modals').innerHTML = '';
+  var bg = openModal(html);
+  if (forced) bg.querySelector('.x').remove();
+  $('cpb').onclick = function () {
+    if ($('cp1').value !== $('cp2').value) { showErr('cperr', 'The new passwords do not match.'); return; }
+    var b = $('cpb'); busy(b, true);
+    call('changePassword', { oldPassword: $('cp0').value, newPassword: $('cp1').value }).then(function () {
+      bg.remove(); toast('Password changed.'); if (forced) start();
+    }).catch(function (e) { busy(b, false); showErr('cperr', e); });
+  };
+}
+
+function start() {
+  return call('bootstrap').then(function (b) {
+    S.boot = b;
+    if (b.user.mustChange) { renderShell(); renderChangePw(true); return; }
+    renderShell();
+    var first = { QA: 'dashboard', PRD: 'tasks', QC: 'tasks', ADMIN: 'dashboard' }[b.user.role];
+    go(S.view && tabsFor().some(function (t) { return t[0] === S.view; }) ? S.view : first);
+    clearInterval(S.pollTimer);
+    S.pollTimer = setInterval(function () { if (S.token && !document.querySelector('.modal-bg')) go(S.view, true); }, 5 * 60000);
+  });
+}
+
+/* ======================= shell & navigation ======================= */
+function tabsFor() {
+  var r = role();
+  if (r === 'QA') return [['dashboard', 'Dashboard'], ['register', 'Register dispatch'], ['verify', 'Verification queue'], ['hardcopy', 'Hardcopy receipt'], ['audit', 'Audit trail'], ['reminders', 'Reminder log'], ['settings', 'Settings']];
+  if (r === 'ADMIN') return [['dashboard', 'Dashboard'], ['users', 'Users'], ['settings', 'Settings'], ['audit', 'Audit trail'], ['reminders', 'Reminder log']];
+  return [['tasks', 'My tasks'], ['dashboard', 'My batches']];
+}
+function renderShell() {
+  var u = S.boot.user;
+  $('app').innerHTML = '<header><div><div class="brand">' + esc(S.boot.company || 'BDVS') + '</div><div class="sub">Batch Document Verification System</div></div>' +
+    '<div class="sp"></div><div class="who">' + esc(u.name) + '<br><span class="sub">' + esc({ PRD: 'Production', QC: 'Quality Control', QA: 'Quality Assurance', ADMIN: 'Administrator' }[u.role]) + '</span></div>' +
+    '<button onclick="renderChangePw(false)">Password</button><button onclick="endSession(\'You have logged out.\')">Log out</button></header>' +
+    '<nav id="nav"></nav><main id="view"></main>';
+  renderNav();
+}
+function renderNav(counts) {
+  counts = counts || {};
+  $('nav').innerHTML = tabsFor().map(function (t) {
+    var n = counts[t[0]] ? '<span class="n">' + counts[t[0]] + '</span>' : '';
+    return '<a class="' + (S.view === t[0] ? 'on' : '') + '" onclick="go(\'' + t[0] + '\')">' + t[1] + n + '</a>';
+  }).join('');
+}
+function go(view, silent) {
+  S.view = view;
+  renderNav(S.navCounts);
+  var v = $('view');
+  if (!silent) v.innerHTML = '<p class="muted"><span class="spin"></span> Loading...</p>';
+  var fn = { dashboard: viewDashboard, tasks: viewTasks, register: viewRegister, verify: viewVerifyQueue, hardcopy: viewHardcopy,
+    audit: viewAudit, reminders: viewReminders, settings: viewSettings, users: viewUsers }[view];
+  Promise.resolve(fn(v)).catch(function (e) { v.innerHTML = '<div class="err">' + esc(e.message) + '</div>'; });
+}
+function loadDash() {
+  return call('dashboard').then(function (d) {
+    S.dash = d;
+    var c = { verify: 0, hardcopy: 0, tasks: 0 };
+    d.batches.forEach(function (b) {
+      if (b.status === 'CLOSED') return;
+      b.docs.forEach(function (x) {
+        if (x.status === 'UNDER_VERIFICATION') c.verify++;
+        if (x.status === 'HARDCOPY_PENDING' || x.status === 'HARDCOPY_DISCREPANCY') c.hardcopy++;
+        if (x.status === 'PENDING_UPLOAD' || x.status === 'REJECTED') c.tasks++;
+      });
+    });
+    S.navCounts = c; renderNav(c);
+    return d;
+  });
+}
+
+/* ======================= dashboard ======================= */
+function viewDashboard(v) {
+  return loadDash().then(function (d) {
+    var c = d.counts;
+    var t = function (val, l, cls, f) { return '<div class="tile ' + cls + '" onclick="dashFilter(\'' + f + '\')"><div class="v">' + val + '</div><div class="l">' + l + '</div></div>'; };
+    var overdueTotal = c.overdueUpload + c.overdueVerify + c.overdueHardcopy;
+    v.innerHTML = '<h2>' + (role() === 'PRD' || role() === 'QC' ? 'My batches' : 'Dashboard') + '</h2>' +
+      '<div class="tiles">' +
+      t(c.awaitingUpload, 'Documents awaiting upload', 'amb', 'PENDING_UPLOAD') +
+      t(c.underVerification, 'Under QA verification', 'blu', 'UNDER_VERIFICATION') +
+      t(c.rejected, 'Rejected - awaiting re-upload', c.rejected ? 'red' : '', 'REJECTED') +
+      t(c.awaitingHardcopy, 'Hardcopy pending', 'amb', 'HARDCOPY') +
+      t(c.readyToClose, 'Batches ready to close', 'grn', 'READY') +
+      t(c.closed, 'Batches closed', '', 'CLOSED') +
+      t(overdueTotal, 'Overdue (upload ' + c.overdueUpload + ' / verify ' + c.overdueVerify + ' / hardcopy ' + c.overdueHardcopy + ')', overdueTotal ? 'red' : 'grn', 'OVERDUE') +
+      '</div>' +
+      (role() === 'QA' || role() === 'ADMIN' ? '<div class="card small" style="padding:10px 14px">Open batches by days since dispatch: <b>0-1 days: ' + c.age01 + '</b> &nbsp;|&nbsp; <b>2-3 days: ' + c.age23 + '</b> &nbsp;|&nbsp; <b style="color:' + (c.age4 ? 'var(--bad)' : 'inherit') + '">&gt;3 days: ' + c.age4 + '</b></div>' : '') +
+      '<div class="row" style="margin-bottom:10px"><input type="text" id="dq" placeholder="Search batch, product, customer, invoice..." style="max-width:340px" oninput="drawDash()">' +
+      '<select id="df" style="max-width:260px" onchange="drawDash()"><option value="">All open batches</option><option value="ALL">All batches incl. closed</option>' +
+      '<option value="OVERDUE">Overdue only</option><option value="PENDING_UPLOAD">Awaiting upload</option><option value="UNDER_VERIFICATION">Under verification</option>' +
+      '<option value="REJECTED">Rejected</option><option value="HARDCOPY">Hardcopy pending</option><option value="READY">Ready to close</option><option value="CLOSED">Closed</option></select>' +
+      '<div class="sp" style="flex:1"></div><button class="btn sec sm" onclick="exportRegister()">Export batch register (Excel CSV)</button></div>' +
+      '<div class="tw" id="dt"></div>';
+    drawDash();
+  });
+}
+function dashFilter(f) { var s = $('df'); if (s) { s.value = f; drawDash(); } }
+function filteredBatches() {
+  var q = ($('dq') && $('dq').value || '').toLowerCase().trim();
+  var f = $('df') ? $('df').value : '';
+  return S.dash.batches.filter(function (b) {
+    if (q && [b.batchNo, b.product, b.customer, b.invoiceNo, b.site].join(' ').toLowerCase().indexOf(q) < 0) return false;
+    var ds = b.docs.map(function (x) { return x.status; });
+    if (!f) return b.status !== 'CLOSED';
+    if (f === 'ALL') return true;
+    if (f === 'CLOSED') return b.status === 'CLOSED';
+    if (b.status === 'CLOSED') return false;
+    if (f === 'OVERDUE') return b.overdue;
+    if (f === 'READY') return b.status === 'READY_TO_CLOSE';
+    if (f === 'HARDCOPY') return ds.indexOf('HARDCOPY_PENDING') >= 0 || ds.indexOf('HARDCOPY_DISCREPANCY') >= 0;
+    return ds.indexOf(f) >= 0;
+  });
+}
+function docCell(x) {
+  if (!x) return '<span class="muted">-</span>';
+  var due = '';
+  if (x.status === 'PENDING_UPLOAD') due = '<br><span class="small">Due ' + fDT(x.dueAt) + '</span> ' + left(x.dueAt);
+  if (x.status === 'REJECTED') due = '<br><span class="small">Rejected ' + x.rejectCount + 'x</span>';
+  if (x.status === 'UNDER_VERIFICATION') due = '<br><span class="small">v' + x.currentVersion + ', verify by ' + fDT(x.verifyDueAt) + '</span> ' + left(x.verifyDueAt);
+  if (x.status === 'HARDCOPY_PENDING') due = '<br><span class="small">Hardcopy due ' + fD(x.hardcopyDueAt) + '</span> ' + left(x.hardcopyDueAt);
+  return chip(DOC_STATUS, x.status) + (x.overdue ? ' <span class="chip c-bad">' + OVERDUE[x.overdue] + '</span>' : '') + due;
+}
+function drawDash() {
+  var rows = filteredBatches();
+  var showBoth = !(role() === 'PRD' || role() === 'QC');
+  $('dt').innerHTML = '<table><thead><tr><th>Batch</th><th>Product</th><th>Customer / invoice</th><th>Dispatched</th><th>Batch status</th>' +
+    (showBoth ? '<th>BMR / BPR (PRD)</th><th>COA + raw data (QC)</th>' : '<th>My document</th>') + '<th></th></tr></thead><tbody>' +
+    (rows.length ? rows.map(function (b) {
+      var bmr = b.docs.filter(function (x) { return x.type === 'BMR_BPR'; })[0];
+      var coa = b.docs.filter(function (x) { return x.type === 'COA_RAW'; })[0];
+      return '<tr class="' + (b.overdue ? 'over' : '') + '"><td><b>' + esc(b.batchNo) + '</b><br><span class="small">' + esc(b.site) + '</span></td><td>' + esc(b.product) + '<br><span class="small">' + esc(b.batchSize) + '</span></td>' +
+        '<td>' + esc(b.customer) + '<br><span class="small">' + esc(b.invoiceNo) + ' &middot; ' + esc(b.market) + '</span></td><td>' + fYmd(b.dispatchDate) + '</td><td>' + chip(BATCH_STATUS, b.status) + '</td>' +
+        (showBoth ? '<td>' + docCell(bmr) + '</td><td>' + docCell(coa) + '</td>' : '<td>' + docCell(b.docs[0]) + '</td>') +
+        '<td><button class="btn sm sec" onclick="openBatch(\'' + b.id + '\')">Open</button></td></tr>';
+    }).join('') : '<tr><td colspan="8" class="muted" style="padding:20px;text-align:center">No batches match.</td></tr>') + '</tbody></table>';
+}
+function csv(rows) {
+  return rows.map(function (r) { return r.map(function (c) { c = String(c == null ? '' : c); return /[",\n]/.test(c) ? '"' + c.replace(/"/g, '""') + '"' : c; }).join(','); }).join('\r\n');
+}
+function download(name, text) {
+  var a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob(['﻿' + text], { type: 'text/csv;charset=utf-8' }));
+  a.download = name; document.body.appendChild(a); a.click(); a.remove();
+}
+function exportRegister() {
+  var rows = [['Batch No.', 'Product', 'Batch size', 'Site', 'Customer', 'Market', 'Invoice / challan', 'Dispatch date', 'Batch status', 'Closed on', 'Closed by',
+    'Document', 'Doc status', 'Upload due', 'First upload', 'Late (h)', 'Current version', 'Rejections', 'Verified OK on', 'Hardcopy due', 'Hardcopy received', 'Overdue']];
+  filteredBatches().forEach(function (b) {
+    b.docs.forEach(function (x) {
+      rows.push([b.batchNo, b.product, b.batchSize, b.site, b.customer, b.market, b.invoiceNo, fYmd(b.dispatchDate), (BATCH_STATUS[b.status] || [b.status])[0],
+        b.closedAt ? fDT(b.closedAt) : '', b.closedBy, x.label, (DOC_STATUS[x.status] || [x.status])[0], fDT(x.dueAt), x.firstUploadAt ? fDT(x.firstUploadAt) : '',
+        x.lateHours, x.currentVersion, x.rejectCount, x.verifiedAt ? fDT(x.verifiedAt) : '', x.hardcopyDueAt ? fD(x.hardcopyDueAt) : '',
+        x.hardcopyReceivedAt ? fDT(x.hardcopyReceivedAt) : '', x.overdue ? OVERDUE[x.overdue] : '']);
+    });
+  });
+  download('BDVS_batch_register_' + todayYmd() + '.csv', csv(rows));
+}
+
+/* ======================= uploader tasks ======================= */
+function viewTasks(v) {
+  return loadDash().then(function (d) {
+    var items = [];
+    d.batches.forEach(function (b) { if (b.status !== 'CLOSED') b.docs.forEach(function (x) { items.push({ b: b, d: x }); }); });
+    var todo = items.filter(function (i) { return i.d.status === 'PENDING_UPLOAD' || i.d.status === 'REJECTED'; })
+      .sort(function (a, b) { return ms(a.d.dueAt) - ms(b.d.dueAt); });
+    var hc = items.filter(function (i) { return i.d.status === 'HARDCOPY_PENDING' || i.d.status === 'HARDCOPY_DISCREPANCY'; });
+    var wait = items.filter(function (i) { return i.d.status === 'UNDER_VERIFICATION'; });
+    var lbl = role() === 'PRD' ? 'filled BMR / BPR' : 'COA with raw data / analytical protocol';
+    v.innerHTML = '<h2>My tasks</h2><p class="muted">Upload the scanned ' + lbl + ' within ' + S.boot.config.uploadDays +
+      ' days of dispatch. After QA verifies it, hand over the original hardcopy to QA with the transmittal slip.</p>' +
+      '<h3>1. Upload required (' + todo.length + ')</h3>' + taskTable(todo, function (i) {
+        return '<button class="btn sm" onclick="openUpload(\'' + i.d.id + '\')">' + (i.d.status === 'REJECTED' ? 'Re-upload corrected scan' : 'Upload scan') + '</button>' +
+          (i.d.status === 'REJECTED' ? ' <button class="btn sm sec" onclick="openBatch(\'' + i.b.id + '\')">See observations</button>' : '');
+      }, true) +
+      '<h3>2. Hardcopy to hand over to QA (' + hc.length + ')</h3>' + taskTable(hc, function (i) {
+        return '<button class="btn sm sec" onclick="printSlip(\'' + i.b.id + '\',\'' + i.d.id + '\')">Print transmittal slip</button>';
+      }) +
+      '<h3>3. Waiting for QA verification (' + wait.length + ')</h3>' + taskTable(wait, function (i) {
+        return '<button class="btn sm sec" onclick="openBatch(\'' + i.b.id + '\')">Open</button>';
+      });
+  });
+}
+function taskTable(list, actions) {
+  if (!list.length) return '<div class="card muted">Nothing here.</div>';
+  return '<div class="tw"><table><thead><tr><th>Batch</th><th>Product</th><th>Dispatched</th><th>Status</th><th>Action</th></tr></thead><tbody>' +
+    list.map(function (i) {
+      return '<tr class="' + (i.d.overdue ? 'over' : '') + '"><td><b>' + esc(i.b.batchNo) + '</b><br><span class="small">' + esc(i.b.customer) + '</span></td><td>' + esc(i.b.product) +
+        '</td><td>' + fYmd(i.b.dispatchDate) + '</td><td>' + docCell(i.d) + '</td><td>' + actions(i) + '</td></tr>';
+    }).join('') + '</tbody></table></div>';
+}
+
+/* ======================= upload ======================= */
+var UP = null;
+var UPLOAD_CHECKS = [
+  ['allPages', 'All pages scanned, in order, including the index page'],
+  ['legible', 'Every page is legible (no cut-off edges, shadows or blur)'],
+  ['signatures', 'All entries, signatures and dates are present on the original'],
+  ['noMissing', 'Page count checked against the index - no pages missing'],
+  ['attachments', 'Attachments included (printouts, dispensing slips, protocols, reports)']
+];
+function findDoc(docId) {
+  var out = null;
+  (S.dash ? S.dash.batches : []).forEach(function (b) { b.docs.forEach(function (x) { if (x.id === docId) out = { b: b, d: x }; }); });
+  return out;
+}
+function openUpload(docId) {
+  var t = findDoc(docId); if (!t) return;
+  UP = { docId: docId, files: [] };
+  openModal(mh('Upload: ' + esc(t.d.label)) +
+    '<div class="facts"><div><b>Batch</b>' + esc(t.b.batchNo) + '</div><div><b>Product</b>' + esc(t.b.product) + '</div><div><b>Dispatched</b>' + fYmd(t.b.dispatchDate) +
+    '</div><div><b>Upload deadline</b>' + fDT(t.d.dueAt) + ' ' + left(t.d.dueAt) + '</div></div>' +
+    masterDocsHtml(t.b.masterDocs) +
+    (t.d.status === 'REJECTED' ? '<div class="err">This document was rejected by QA. Correct it as per the observations and upload the complete corrected scan (it becomes a new version; earlier versions are kept).</div>' : '') +
+    '<label class="f">Scanned files (PDF preferred; JPG/PNG pages are combined into one PDF). Max ' + S.boot.config.maxFileMb + ' MB per file.</label>' +
+    '<input type="file" id="upf" multiple accept="application/pdf,image/jpeg,image/png">' +
+    '<div id="upl" style="margin:8px 0"></div>' +
+    '<div class="grid2"><div><label class="f">Total number of pages scanned (count from the physical document)</label><input type="number" min="1" id="upp"></div></div>' +
+    '<h3>Upload checklist</h3>' + UPLOAD_CHECKS.map(function (c) { return '<label style="display:block;margin:5px 0"><input type="checkbox" class="upc" data-k="' + c[0] + '"> ' + c[1] + '</label>'; }).join('') +
+    '<label class="f" style="margin-top:8px">Remarks (optional)</label><textarea id="upr"></textarea>' +
+    '<div id="uperr"></div><div class="row" style="justify-content:flex-end;margin-top:12px"><button class="btn sec" onclick="closeModal(this)">Cancel</button><button class="btn" id="upb">Upload</button></div>');
+  $('upf').onchange = function (e) { addFiles(e.target.files); };
+  $('upb').onclick = submitUpload;
+}
+function addFiles(list) {
+  var max = S.boot.config.maxFileMb * 1048576;
+  Array.prototype.forEach.call(list, function (f) {
+    var item = { file: f, name: f.name, kind: /pdf$/i.test(f.type) || /\.pdf$/i.test(f.name) ? 'pdf' : (/^image\/(jpeg|png)$/.test(f.type) ? 'img' : 'bad'), pages: null, err: '' };
+    if (item.kind === 'bad') item.err = 'Not a PDF, JPG or PNG';
+    else if (f.size > max) item.err = 'Larger than ' + S.boot.config.maxFileMb + ' MB';
+    else if (f.size === 0) item.err = 'Empty file';
+    UP.files.push(item);
+    if (item.kind === 'img' && !item.err) item.pages = 1;
+    if (item.kind === 'pdf' && !item.err) {
+      item.pages = '...';
+      f.arrayBuffer().then(function (buf) {
+        return pdfjsLib.getDocument({ data: new Uint8Array(buf) }).promise;
+      }).then(function (pdf) { item.pages = pdf.numPages; drawFiles(); })
+        .catch(function (e) { item.err = e && e.name === 'PasswordException' ? 'Password-protected PDF - not accepted' : 'Cannot read this PDF (' + (e.message || e) + ')'; item.pages = null; drawFiles(); });
+    }
+  });
+  $('upf').value = '';
+  drawFiles();
+}
+function drawFiles() {
+  var total = UP.files.reduce(function (s, f) { return s + (typeof f.pages === 'number' && !f.err ? f.pages : 0); }, 0);
+  $('upl').innerHTML = UP.files.length ? '<table><tbody>' + UP.files.map(function (f, i) {
+    return '<tr><td>' + esc(f.name) + '</td><td>' + (f.kind === 'img' ? 'image (1 page)' : f.pages == null ? '' : f.pages + ' page(s)') + '</td><td>' +
+      (f.err ? '<span style="color:var(--bad)">' + esc(f.err) + '</span>' : '<span style="color:var(--ok)">OK</span>') + '</td><td><button class="btn sm sec" onclick="UP.files.splice(' + i + ',1);drawFiles()">Remove</button></td></tr>';
+  }).join('') + '</tbody></table><p class="small">Pages detected in files: <b>' + total + '</b>' +
+    (UP.files.some(function (f) { return f.kind === 'img'; }) ? ' &middot; images will be combined into one PDF in the order listed' : '') + '</p>' : '';
+}
+function readB64(blobOrBuf) {
+  return new Promise(function (res, rej) {
+    var blob = blobOrBuf instanceof Blob ? blobOrBuf : new Blob([blobOrBuf]);
+    var r = new FileReader();
+    r.onload = function () { res(String(r.result).split(',')[1]); };
+    r.onerror = function () { rej(r.error); };
+    r.readAsDataURL(blob);
+  });
+}
+function imagesToPdf(items) {
+  var jsPDF = window.jspdf.jsPDF;
+  var doc = null;
+  return items.reduce(function (p, it) {
+    return p.then(function () {
+      return new Promise(function (res, rej) {
+        var fr = new FileReader();
+        fr.onload = function () {
+          var img = new Image();
+          img.onload = function () {
+            var land = img.width > img.height;
+            var W = land ? 297 : 210, H = land ? 210 : 297;
+            if (!doc) doc = new jsPDF({ orientation: land ? 'l' : 'p', unit: 'mm', format: 'a4', compress: true });
+            else doc.addPage('a4', land ? 'l' : 'p');
+            var s = Math.min(W / img.width, H / img.height);
+            var w = img.width * s, h = img.height * s;
+            doc.addImage(fr.result, it.file.type === 'image/png' ? 'PNG' : 'JPEG', (W - w) / 2, (H - h) / 2, w, h);
+            res();
+          };
+          img.onerror = function () { rej(new Error('Cannot read image ' + it.name)); };
+          img.src = fr.result;
+        };
+        fr.readAsDataURL(it.file);
+      });
+    });
+  }, Promise.resolve()).then(function () { return doc.output('arraybuffer'); });
+}
+function submitUpload(confirmDuplicate) {
+  var b = $('upb');
+  showErr('uperr', null);
+  var files = UP.files;
+  if (!files.length) return showErr('uperr', 'Attach the scanned file(s).');
+  if (files.some(function (f) { return f.err; })) return showErr('uperr', 'Remove the files marked with an error first.');
+  if (files.some(function (f) { return f.pages === '...'; })) return showErr('uperr', 'Still reading files, try again in a moment.');
+  var checks = {}; var all = true;
+  document.querySelectorAll('.upc').forEach(function (c) { checks[c.dataset.k] = c.checked; if (!c.checked) all = false; });
+  if (!all) return showErr('uperr', 'Confirm every item of the upload checklist.');
+  var declared = Number($('upp').value);
+  var total = files.reduce(function (s, f) { return s + f.pages; }, 0);
+  if (!(declared > 0)) return showErr('uperr', 'Enter the total number of pages scanned.');
+  if (declared !== total) return showErr('uperr', 'Page count mismatch: you entered ' + declared + ' pages but the files contain ' + total + '. Check for missing or extra pages.');
+  busy(b, true, 'Preparing files');
+  var pdfs = files.filter(function (f) { return f.kind === 'pdf'; });
+  var imgs = files.filter(function (f) { return f.kind === 'img'; });
+  var out = [];
+  Promise.all(pdfs.map(function (f) { return readB64(f.file).then(function (b64) { out.push({ name: f.name, base64: b64, pages: f.pages }); }); }))
+    .then(function () {
+      if (!imgs.length) return;
+      return imagesToPdf(imgs).then(readB64).then(function (b64) { out.push({ name: 'scanned_images.pdf', base64: b64, pages: imgs.length }); });
+    })
+    .then(function () {
+      busy(b, false); busy(b, true, 'Uploading');
+      return call('upload', { docId: UP.docId, declaredPages: declared, checklist: checks, remarks: $('upr').value, files: out, confirmDuplicate: confirmDuplicate === true });
+    })
+    .then(function (r) {
+      busy(b, false);
+      if (r.needConfirm) {
+        return confirmBox('Possible duplicate file', r.message + '\n\nUpload anyway?').then(function (yes) { if (yes) submitUpload(true); });
+      }
+      closeModal(b);
+      toast('Uploaded as version ' + r.versionNo + '. QA has been notified (verification due ' + fDT(r.verifyDueAt) + ').' + (Number(r.lateHours) > 0 ? ' Marked LATE by ' + r.lateHours + ' h.' : ''));
+      go(S.view);
+    })
+    .catch(function (e) { busy(b, false); showErr('uperr', e); });
+}
+
+/* ======================= batch detail ======================= */
+function openBatch(batchId) {
+  var bg = openModal(mh('Batch') + '<div id="bd"><span class="spin"></span> Loading...</div>', true);
+  call('getBatch', { batchId: batchId }).then(function (b) {
+    bg.querySelector('.mh h2').innerHTML = 'Batch ' + esc(b.batchNo) + ' &middot; ' + esc(b.product) + ' ' + chip(BATCH_STATUS, b.status);
+    var html = '<div class="facts">' + [['Batch size', b.batchSize], ['Site', b.site], ['Customer', b.customer], ['Market', b.market], ['Invoice / challan', b.invoiceNo],
+      ['Dispatch date', fYmd(b.dispatchDate)], ['Registered', fDT(b.registeredAt) + ' by ' + b.registeredBy]].map(function (f) { return '<div><b>' + f[0] + '</b>' + esc(f[1]) + '</div>'; }).join('') +
+      (b.closedAt ? '<div><b>Batch data verification completed</b>' + fDT(b.closedAt) + ' by ' + esc(b.closedBy) + '</div>' : '') + '</div>' +
+      (b.remarks ? '<p class="small">Remarks: ' + esc(b.remarks) + '</p>' : '') + masterDocsHtml(b.masterDocs);
+    if (b.status === 'READY_TO_CLOSE' && isQA()) {
+      html += '<div class="okmsg">Both documents are verified and both hardcopies are received. <button class="btn ok sm" onclick="closeBatchDlg(\'' + b.id + '\',\'' + esc(b.batchNo) + '\')">Complete Batch Data Verification</button></div>';
+    }
+    html += '<div class="docs">' + b.docs.map(function (d) { return docCard(b, d); }).join('') + '</div>';
+    if (b.audit) {
+      html += '<h3>Audit trail (this batch)</h3><div class="timeline">' + b.audit.slice().reverse().map(function (a) {
+        return '<div><b>' + fDT(a.timestamp) + '</b> &middot; ' + esc(a.userName) + ' (' + esc(a.role) + ') &middot; <b>' + esc(a.action) + '</b> ' + esc(a.newValue) + (a.reason ? ' &middot; <i>' + esc(a.reason) + '</i>' : '') + '</div>';
+      }).join('') + '</div>';
+      html += '<h3>Emails sent (this batch)</h3><div class="timeline">' + (b.reminders.length ? b.reminders.slice().reverse().map(function (r) {
+        return '<div><b>' + fDT(r.sentAt) + '</b> &middot; ' + chip({ SENT: ['Sent', 'c-ok'], FAILED: ['Failed', 'c-bad'], SKIPPED: ['Skipped', 'c-warn'] }, r.status) + ' ' + esc(r.subject) + ' <span class="muted">to ' + esc(r.to) + (r.cc ? ' cc ' + esc(r.cc) : '') + '</span>' + (r.error ? ' <span style="color:var(--bad)">' + esc(r.error) + '</span>' : '') + '</div>';
+      }).join('') : '<div class="muted">None yet.</div>') + '</div>';
+    }
+    $('bd').innerHTML = html;
+    S.batch = b;
+  }).catch(function (e) { $('bd').innerHTML = '<div class="err">' + esc(e.message) + '</div>'; });
+}
+function docCard(b, d) {
+  var vs = b.versions.filter(function (v) { return v.docId === d.id; }).sort(function (x, y) { return y.versionNo - x.versionNo; });
+  var act = '';
+  var r = role();
+  if ((r === 'PRD' || r === 'QC') && r === d.dept && (d.status === 'PENDING_UPLOAD' || d.status === 'REJECTED')) {
+    act += '<button class="btn sm" onclick="closeModal(this);openUpload(\'' + d.id + '\')">' + (d.status === 'REJECTED' ? 'Re-upload' : 'Upload') + '</button> ';
+  }
+  if (isQA() && d.status === 'UNDER_VERIFICATION') act += '<button class="btn sm" onclick="openVerify(\'' + b.id + '\',\'' + d.id + '\')">Verify now</button> ';
+  if (isQA() && d.status === 'HARDCOPY_PENDING') act += '<button class="btn sm" onclick="hardcopyDlg(\'' + d.id + '\')">Record hardcopy receipt</button> ';
+  if (d.status === 'HARDCOPY_PENDING' && (r === d.dept || isQA())) act += '<button class="btn sm sec" onclick="printSlip(\'' + b.id + '\',\'' + d.id + '\')">Transmittal slip</button> ';
+  var openHc = (b.hardcopies || []).filter(function (h) { return h.docId === d.id && h.status === 'OPEN'; })[0];
+  if (isQA() && openHc) act += '<button class="btn sm bad" onclick="resolveDlg(\'' + openHc.id + '\')">Resolve discrepancy</button> ';
+
+  var vhtml = vs.map(function (v) {
+    var obs = b.observations.filter(function (o) { return o.versionId === v.id; });
+    var ver = b.verifications.filter(function (x) { return x.versionId === v.id; })[0];
+    return '<div style="border-top:1px solid var(--line);padding:8px 0"><b>Version ' + v.versionNo + '</b> ' +
+      chip({ UNDER_VERIFICATION: ['Under verification', 'c-info'], ACCEPTED: ['Accepted', 'c-ok'], REJECTED: ['Rejected', 'c-bad'] }, v.status) +
+      (Number(v.lateHours) > 0 ? ' <span class="chip c-bad">Late ' + v.lateHours + ' h</span>' : '') +
+      '<div class="small">Uploaded ' + fDT(v.uploadedAt) + ' by ' + esc(v.uploaderName) + ' &middot; ' + v.actualPages + ' pages' + (v.remarks ? ' &middot; "' + esc(v.remarks) + '"' : '') + '</div>' +
+      (v.decidedAt ? '<div class="small">' + (v.status === 'ACCEPTED' ? 'Accepted' : 'Rejected') + ' ' + fDT(v.decidedAt) + ' by ' + esc(v.decidedBy) + ' &middot; ' + v.elapsedHours + ' working h' + (v.breach === 'Y' ? ' <b style="color:var(--bad)">(24 h breached)</b>' : '') + '</div>' : '<div class="small">Verify by ' + fDT(v.verifyDueAt) + ' ' + left(v.verifyDueAt) + '</div>') +
+      '<div style="margin-top:4px">' + v.files.map(function (f, i) { return '<button class="btn sm sec" style="margin:2px" onclick="viewFile(\'' + v.id + '\',' + i + ',\'' + esc(f.name).replace(/'/g, '') + '\')">View ' + esc(f.name.replace(/^.*?_v\d+_\d+_/, '')) + ' (' + f.pages + ' p)</button>'; }).join('') + '</div>' +
+      (obs.length ? '<table style="margin-top:6px"><thead><tr><th>Page</th><th>Severity</th><th>Observation</th></tr></thead><tbody>' + obs.map(function (o) {
+        return '<tr><td>' + esc(o.page) + '</td><td><span class="chip ' + (o.severity === 'Critical' ? 'c-bad' : o.severity === 'Major' ? 'c-warn' : 'c-gray') + '">' + esc(o.severity) + '</span></td><td>' + esc(o.text) + '</td></tr>';
+      }).join('') + '</tbody></table>' : '') +
+      (ver && ver.remarks ? '<div class="small">QA remarks: ' + esc(ver.remarks) + '</div>' : '') +
+      (ver ? '<details class="small"><summary>QA checklist</summary>' + ver.checklist.map(function (c) { return '<div>' + (c.answer === 'YES' ? '&#10004;' : c.answer === 'NO' ? '&#10008;' : 'NA') + ' ' + esc(c.item) + (c.comment ? ' <i>(' + esc(c.comment) + ')</i>' : '') + '</div>'; }).join('') + '</details>' : '') +
+      '</div>';
+  }).join('');
+  var hcs = (b.hardcopies || []).filter(function (h) { return h.docId === d.id; }).map(function (h) {
+    return '<div class="small" style="border-top:1px solid var(--line);padding-top:6px">Hardcopy received ' + fYmd(h.receivedOn) + ' from ' + esc(h.receivedFrom) + ' &middot; ' + h.pagesReceived + ' pages (scan ' + h.pagesScanned + ') &middot; ' + esc(h.condition) + ' &middot; stored at <b>' + esc(h.location) + '</b> &middot; recorded by ' + esc(h.recordedBy) +
+      (h.discrepancy === 'Y' ? '<br><span style="color:var(--bad)">Discrepancy: ' + esc(h.discrepancyText) + '</span>' + (h.status === 'RESOLVED' ? '<br>Resolved ' + fDT(h.resolvedAt) + ' by ' + esc(h.resolvedBy) + ': ' + esc(h.resolution) : ' <b>(OPEN)</b>') : '') + '</div>';
+  }).join('');
+  return '<div class="doc"><div class="row" style="justify-content:space-between"><b>' + esc(d.label) + '</b><span class="small">' + d.dept + '</span></div>' +
+    '<div style="margin:6px 0">' + docCell(d) + '</div>' +
+    '<div class="small">Upload deadline ' + fDT(d.dueAt) + (d.firstUploadAt ? ' &middot; first uploaded ' + fDT(d.firstUploadAt) + (Number(d.lateHours) > 0 ? ' (late ' + d.lateHours + ' h)' : ' (on time)') : '') + '</div>' +
+    (act ? '<div style="margin:8px 0">' + act + '</div>' : '') + vhtml + hcs + '</div>';
+}
+
+/* ======================= PDF viewer ======================= */
+function Viewer(el, versionId, files) {
+  this.el = el; this.versionId = versionId; this.files = files; this.idx = 0; this.page = 1; this.scale = 1.3; this.pdf = null;
+  el.innerHTML = '<div class="vt"><select class="vf">' + files.map(function (f, i) { return '<option value="' + i + '">' + esc(f.name.replace(/^.*?_v\d+_\d+_/, '')) + ' (' + f.pages + ' p)</option>'; }).join('') + '</select>' +
+    '<button class="vp">&lsaquo; Prev</button><span class="vn">-</span><button class="vx">Next &rsaquo;</button><button class="vzo">&minus;</button><button class="vzi">+</button>' +
+    '<span class="vi small"></span><span style="flex:1"></span><button class="vd">Download</button></div><div class="cv"><span class="spin"></span></div>';
+  var self = this;
+  el.querySelector('.vf').onchange = function (e) { self.load(Number(e.target.value)); };
+  el.querySelector('.vp').onclick = function () { if (self.page > 1) { self.page--; self.render(); } };
+  el.querySelector('.vx').onclick = function () { if (self.pdf && self.page < self.pdf.numPages) { self.page++; self.render(); } };
+  el.querySelector('.vzo').onclick = function () { self.scale = Math.max(0.5, self.scale - 0.2); self.render(); };
+  el.querySelector('.vzi').onclick = function () { self.scale = Math.min(4, self.scale + 0.2); self.render(); };
+  el.querySelector('.vd').onclick = function () { self.download(); };
+  this.load(0);
+}
+Viewer.prototype.load = function (i) {
+  var self = this; self.idx = i; self.page = 1;
+  var cv = self.el.querySelector('.cv'); cv.innerHTML = '<span class="spin"></span> <span style="color:#fff">Loading scan...</span>';
+  call('getFile', { versionId: self.versionId, index: i }).then(function (f) {
+    self.el.querySelector('.vi').innerHTML = f.integrityOk ? '<span style="color:#86efac">&#10004; SHA-256 integrity verified</span>' : '<span style="color:#fca5a5">&#9888; INTEGRITY CHECK FAILED</span>';
+    var bytes = Uint8Array.from(atob(f.base64), function (c) { return c.charCodeAt(0); });
+    return pdfjsLib.getDocument({ data: bytes }).promise;
+  }).then(function (pdf) { self.pdf = pdf; self.render(); })
+    .catch(function (e) { cv.innerHTML = '<div class="err">' + esc(e.message) + '</div>'; });
+};
+Viewer.prototype.render = function () {
+  var self = this; if (!self.pdf) return;
+  self.el.querySelector('.vn').textContent = 'Page ' + self.page + ' / ' + self.pdf.numPages;
+  self.pdf.getPage(self.page).then(function (pg) {
+    var vp = pg.getViewport({ scale: self.scale });
+    var c = document.createElement('canvas'); c.width = vp.width; c.height = vp.height;
+    var cv = self.el.querySelector('.cv'); cv.innerHTML = ''; cv.appendChild(c);
+    return pg.render({ canvasContext: c.getContext('2d'), viewport: vp }).promise;
+  });
+};
+Viewer.prototype.download = function () {
+  var self = this;
+  call('getFile', { versionId: self.versionId, index: self.idx, download: true }).then(function (f) {
+    var bytes = Uint8Array.from(atob(f.base64), function (c) { return c.charCodeAt(0); });
+    var a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' })); a.download = f.name;
+    document.body.appendChild(a); a.click(); a.remove();
+  }).catch(function (e) { toast(e.message); });
+};
+function viewFile(versionId, index, name) {
+  var v = (S.batch.versions || []).filter(function (x) { return x.id === versionId; })[0];
+  var bg = openModal(mh('Scan viewer') + '<div class="viewer" id="vw1"></div>', true);
+  var viewer = new Viewer($('vw1'), versionId, v.files);
+  if (index) { bg.querySelector('.vf').value = String(index); viewer.load(index); }
+}
+
+/* ======================= QA verification ======================= */
+function viewVerifyQueue(v) {
+  return loadDash().then(function (d) {
+    var list = [];
+    d.batches.forEach(function (b) { b.docs.forEach(function (x) { if (x.status === 'UNDER_VERIFICATION') list.push({ b: b, d: x }); }); });
+    list.sort(function (a, b) { return ms(a.d.verifyDueAt) - ms(b.d.verifyDueAt); });
+    v.innerHTML = '<h2>Verification queue</h2><p class="muted">Each upload must be verified within ' + S.boot.config.verifyHours + ' working hours (Sundays and declared holidays excluded). Oldest first.</p>' +
+      (list.length ? '<div class="tw"><table><thead><tr><th>Batch</th><th>Document</th><th>Uploaded</th><th>Verify by</th><th></th></tr></thead><tbody>' + list.map(function (i) {
+        return '<tr class="' + (i.d.overdue ? 'over' : '') + '"><td><b>' + esc(i.b.batchNo) + '</b><br><span class="small">' + esc(i.b.product) + ' &middot; ' + esc(i.b.customer) + '</span></td><td>' + esc(i.d.label) +
+          '<br><span class="small">Version ' + i.d.currentVersion + (Number(i.d.rejectCount) ? ' (re-upload after ' + i.d.rejectCount + ' rejection(s))' : '') + '</span></td><td>' + fDT(i.d.uploadedAt) + '<br><span class="small">' + esc(i.d.uploaderName || '') + '</span></td>' +
+          '<td>' + fDT(i.d.verifyDueAt) + '<br>' + left(i.d.verifyDueAt) + '</td><td><button class="btn sm" onclick="openVerify(\'' + i.b.id + '\',\'' + i.d.id + '\')">Verify</button></td></tr>';
+      }).join('') + '</tbody></table></div>' : '<div class="card muted">Nothing waiting for verification.</div>');
+  });
+}
+var VF = null;
+function openVerify(batchId, docId) {
+  document.querySelectorAll('.modal-bg').forEach(function (m) { m.remove(); });
+  var bg = openModal(mh('Verify scanned copy') + '<div id="vfb"><span class="spin"></span> Loading...</div>', true);
+  call('getBatch', { batchId: batchId }).then(function (b) {
+    S.batch = b;
+    var d = b.docs.filter(function (x) { return x.id === docId; })[0];
+    var v = b.versions.filter(function (x) { return x.docId === docId && String(x.versionNo) === String(d.currentVersion); })[0];
+    if (!v || v.status !== 'UNDER_VERIFICATION') { $('vfb').innerHTML = '<div class="err">This document is no longer awaiting verification.</div>'; return; }
+    var items = S.boot.checklists[d.type];
+    VF = { b: b, d: d, v: v, items: items, ans: {}, obs: [] };
+    var prev = b.observations.filter(function (o) { return o.docId === docId; });
+    bg.querySelector('.mh h2').innerHTML = esc(d.label) + ' &middot; Batch ' + esc(b.batchNo) + ' &middot; v' + v.versionNo;
+    $('vfb').innerHTML = '<div class="split"><div class="viewer" id="vw2"></div><div>' +
+      '<div class="facts"><div><b>Product</b>' + esc(b.product) + '</div><div><b>Batch size</b>' + esc(b.batchSize) + '</div><div><b>Customer</b>' + esc(b.customer) + '</div>' +
+      '<div><b>Dispatch</b>' + fYmd(b.dispatchDate) + ' / ' + esc(b.invoiceNo) + '</div><div><b>Uploaded</b>' + fDT(v.uploadedAt) + ' by ' + esc(v.uploaderName) + '</div>' +
+      '<div><b>Pages</b>' + v.actualPages + '</div><div><b>Verify by</b>' + fDT(v.verifyDueAt) + ' ' + left(v.verifyDueAt) + '</div></div>' +
+      masterDocsHtml(b.masterDocs) +
+      (prev.length ? '<details class="small"><summary><b>' + prev.length + ' observation(s) on earlier versions</b> - check they are corrected</summary>' + prev.map(function (o) { return '<div>p.' + esc(o.page) + ' [' + esc(o.severity) + '] ' + esc(o.text) + '</div>'; }).join('') + '</details>' : '') +
+      '<h3>Checklist <span class="small">(answer every item; "No" requires rejection)</span></h3><div class="row small" style="margin-bottom:4px"><a href="#" onclick="allYes();return false">Mark all remaining as Yes</a></div><div class="ckl" id="ckl"></div>' +
+      '<h3>Observations <span class="small">(required to reject)</span></h3><table class="obs"><thead><tr><th style="width:70px">Page</th><th>Observation</th><th style="width:110px">Severity</th><th></th></tr></thead><tbody id="obsb"></tbody></table>' +
+      '<button class="btn sm sec" style="margin-top:4px" onclick="addObs()">+ Add observation</button>' +
+      '<label class="f" style="margin-top:10px">Remarks</label><textarea id="vfr"></textarea>' +
+      '<label class="f" style="margin-top:8px">Your password (electronic signature)</label><input type="password" id="vfp" autocomplete="current-password">' +
+      '<div id="vferr"></div><div class="row" style="justify-content:flex-end;margin-top:10px"><button class="btn bad" id="vfrej" onclick="decide(\'REJECT\')">Reject - return to ' + d.dept + '</button><button class="btn ok" id="vfacc" onclick="decide(\'ACCEPT\')">Accept - Verified OK</button></div>' +
+      '</div></div>';
+    new Viewer($('vw2'), v.id, v.files);
+    drawChecklist(); drawObs();
+  }).catch(function (e) { $('vfb').innerHTML = '<div class="err">' + esc(e.message) + '</div>'; });
+}
+function drawChecklist() {
+  $('ckl').innerHTML = VF.items.map(function (it, i) {
+    var a = VF.ans[it.id] || {};
+    return '<div class="ck ' + (a.answer === 'NO' ? 'no' : a.answer === 'NA' ? 'na' : '') + '"><div class="q">' + (i + 1) + '. ' + esc(it.item) + '</div><div class="opts">' +
+      ['YES', 'NO', 'NA'].map(function (o) { return '<label><input type="radio" name="ck' + i + '" ' + (a.answer === o ? 'checked' : '') + ' onchange="setAns(\'' + it.id + '\',\'' + o + '\')"> ' + { YES: 'Yes', NO: 'No', NA: 'N/A' }[o] + '</label>'; }).join('') +
+      '<input type="text" placeholder="' + (a.answer === 'NA' ? 'Reason for N/A (required)' : 'Comment (optional)') + '" value="' + esc(a.comment || '') + '" oninput="setCom(\'' + it.id + '\',this.value)" style="flex:1;min-width:140px"></div></div>';
+  }).join('');
+  updateButtons();
+}
+function setAns(id, a) { VF.ans[id] = VF.ans[id] || {}; VF.ans[id].answer = a; drawChecklist(); }
+function setCom(id, c) { VF.ans[id] = VF.ans[id] || {}; VF.ans[id].comment = c; }
+function allYes() { VF.items.forEach(function (it) { if (!VF.ans[it.id] || !VF.ans[it.id].answer) { VF.ans[it.id] = VF.ans[it.id] || {}; VF.ans[it.id].answer = 'YES'; } }); drawChecklist(); }
+function addObs() { VF.obs.push({ page: '', text: '', severity: 'Major' }); drawObs(); }
+function drawObs() {
+  $('obsb').innerHTML = VF.obs.map(function (o, i) {
+    return '<tr><td><input type="text" value="' + esc(o.page) + '" oninput="VF.obs[' + i + '].page=this.value"></td><td><input type="text" value="' + esc(o.text) + '" oninput="VF.obs[' + i + '].text=this.value"></td>' +
+      '<td><select onchange="VF.obs[' + i + '].severity=this.value">' + ['Critical', 'Major', 'Minor'].map(function (s) { return '<option ' + (o.severity === s ? 'selected' : '') + '>' + s + '</option>'; }).join('') + '</select></td>' +
+      '<td><button class="btn sm sec" onclick="VF.obs.splice(' + i + ',1);drawObs()">&times;</button></td></tr>';
+  }).join('') || '<tr><td colspan="4" class="small muted">No observations.</td></tr>';
+}
+function updateButtons() {
+  var answered = VF.items.every(function (it) { return VF.ans[it.id] && VF.ans[it.id].answer; });
+  var anyNo = VF.items.some(function (it) { return VF.ans[it.id] && VF.ans[it.id].answer === 'NO'; });
+  $('vfacc').disabled = !answered || anyNo;
+  $('vfacc').title = !answered ? 'Answer every checklist item first' : anyNo ? 'An item is answered No - reject instead' : '';
+}
+function decide(outcome) {
+  showErr('vferr', null);
+  var checklist = VF.items.map(function (it) { var a = VF.ans[it.id] || {}; return { id: it.id, answer: a.answer, comment: a.comment || '' }; });
+  if (checklist.some(function (c) { return !c.answer; })) return showErr('vferr', 'Answer every checklist item.');
+  if (checklist.some(function (c) { return c.answer === 'NA' && !c.comment.trim(); })) return showErr('vferr', 'Give a reason for every N/A answer.');
+  var obs = VF.obs.filter(function (o) { return o.text.trim(); });
+  if (outcome === 'REJECT' && !obs.length) return showErr('vferr', 'Add at least one observation (page, observation, severity) to reject.');
+  if (!$('vfp').value) return showErr('vferr', 'Enter your password to sign the decision.');
+  var btn = $(outcome === 'ACCEPT' ? 'vfacc' : 'vfrej'); busy(btn, true, 'Signing');
+  call('decide', { versionId: VF.v.id, outcome: outcome, checklist: checklist, observations: obs, remarks: $('vfr').value, password: $('vfp').value })
+    .then(function (r) {
+      document.querySelectorAll('.modal-bg').forEach(function (m) { m.remove(); });
+      toast((outcome === 'ACCEPT' ? 'Verified OK. Hardcopy requested from ' : 'Rejected and returned to ') + VF.d.dept + '. Time taken: ' + r.elapsedHours + ' working h' + (r.breach === 'Y' ? ' (24 h BREACHED)' : '') + '.');
+      go(S.view);
+    }).catch(function (e) { busy(btn, false); showErr('vferr', e); });
+}
+
+/* ======================= hardcopy ======================= */
+function viewHardcopy(v) {
+  return loadDash().then(function (d) {
+    var list = [];
+    d.batches.forEach(function (b) { b.docs.forEach(function (x) { if (x.status === 'HARDCOPY_PENDING' || x.status === 'HARDCOPY_DISCREPANCY') list.push({ b: b, d: x }); }); });
+    list.sort(function (a, b) { return ms(a.d.hardcopyDueAt) - ms(b.d.hardcopyDueAt); });
+    v.innerHTML = '<h2>Hardcopy receipt</h2><p class="muted">Originals are due within ' + 3 + ' working days of Verified OK. Check the page count against the verified scan and record the storage location.</p>' +
+      (list.length ? '<div class="tw"><table><thead><tr><th>Batch</th><th>Document</th><th>Verified OK</th><th>Hardcopy due</th><th></th></tr></thead><tbody>' + list.map(function (i) {
+        return '<tr class="' + (i.d.overdue ? 'over' : '') + '"><td><b>' + esc(i.b.batchNo) + '</b><br><span class="small">' + esc(i.b.product) + '</span></td><td>' + esc(i.d.label) + '<br>' + chip(DOC_STATUS, i.d.status) + '</td><td>' + fDT(i.d.verifiedAt) +
+          '</td><td>' + fD(i.d.hardcopyDueAt) + '<br>' + left(i.d.hardcopyDueAt) + '</td><td>' +
+          (i.d.status === 'HARDCOPY_PENDING' ? '<button class="btn sm" onclick="hardcopyDlg(\'' + i.d.id + '\')">Record receipt</button> ' : '') +
+          '<button class="btn sm sec" onclick="openBatch(\'' + i.b.id + '\')">Open</button></td></tr>';
+      }).join('') + '</tbody></table></div>' : '<div class="card muted">No hardcopies pending.</div>');
+  });
+}
+function hardcopyDlg(docId) {
+  var t = findDoc(docId);
+  var bb = S.batch && S.batch.docs.some(function (x) { return x.id === docId; }) ? S.batch : null;
+  var dd = t ? t.d : bb.docs.filter(function (x) { return x.id === docId; })[0];
+  var bat = t ? t.b : bb;
+  var pages = '';
+  if (bb) { var v = bb.versions.filter(function (x) { return x.docId === docId && String(x.versionNo) === String(dd.currentVersion); })[0]; if (v) pages = v.actualPages; }
+  var bg = openModal(mh('Record hardcopy receipt') + '<p><b>' + esc(dd.label) + '</b> &middot; Batch ' + esc(bat.batchNo) + ' &middot; ' + esc(bat.product) + (pages ? ' &middot; verified scan has <b>' + pages + ' pages</b>' : '') + '</p>' +
+    '<div class="grid2"><div><label class="f">Received from (name)</label><input type="text" id="hc1"></div><div><label class="f">Date received</label><input type="date" id="hc2" value="' + todayYmd() + '" max="' + todayYmd() + '"></div>' +
+    '<div><label class="f">Pages received (count the original)</label><input type="number" min="1" id="hc3"></div><div><label class="f">Condition</label><select id="hc4"><option>Good</option><option>Damaged - legible</option><option>Damaged - illegible parts</option></select></div>' +
+    '<div><label class="f">Storage location (file / rack / box no.)</label><input type="text" id="hc5"></div></div>' +
+    '<label style="display:block;margin-top:10px"><input type="checkbox" id="hc6"> Hardcopy differs from the verified scan (content, signatures, pages)</label><textarea id="hc7" placeholder="Describe the discrepancy" style="margin-top:4px"></textarea>' +
+    '<p class="small">A page-count mismatch is automatically recorded as a discrepancy and blocks batch closure until resolved.</p>' +
+    '<div id="hcerr"></div><div class="row" style="justify-content:flex-end"><button class="btn sec" onclick="closeModal(this)">Cancel</button><button class="btn" id="hcb">Save receipt</button></div>');
+  $('hcb').onclick = function () {
+    var b = $('hcb'); busy(b, true);
+    call('recordHardcopy', { docId: docId, receivedFrom: $('hc1').value, receivedOn: $('hc2').value, pagesReceived: $('hc3').value, condition: $('hc4').value,
+      location: $('hc5').value, discrepancy: $('hc6').checked, discrepancyText: $('hc7').value })
+      .then(function (r) { document.querySelectorAll('.modal-bg').forEach(function (m) { m.remove(); }); toast(r.status === 'HARDCOPY_RECEIVED' ? 'Hardcopy receipt recorded.' : 'Receipt recorded WITH DISCREPANCY - resolve it before closure.'); go(S.view); })
+      .catch(function (e) { busy(b, false); showErr('hcerr', e); });
+  };
+}
+function resolveDlg(hcId) {
+  askText('Resolve hardcopy discrepancy', 'Resolution / justification (e.g. missing page received, corrected and re-verified)').then(function (t) {
+    if (!t) return;
+    call('resolveDiscrepancy', { hardcopyId: hcId, resolution: t }).then(function () {
+      toast('Discrepancy resolved.'); document.querySelectorAll('.modal-bg').forEach(function (m) { m.remove(); }); go(S.view);
+    }).catch(function (e) { toast(e.message); });
+  });
+}
+function printSlip(batchId, docId) {
+  var t = findDoc(docId);
+  var go2 = function (b, d) {
+    var v = b.versions ? b.versions.filter(function (x) { return x.docId === docId && String(x.versionNo) === String(d.currentVersion); })[0] : null;
+    $('print-area').innerHTML = '<h2 style="margin:0">' + esc(S.boot.company) + '</h2><h3 style="margin:4px 0 14px">HARDCOPY TRANSMITTAL SLIP - Batch Documents to QA</h3>' +
+      '<table style="width:100%;border-collapse:collapse"><tbody>' + [['Product', b.product], ['Batch No.', b.batchNo], ['Batch size', b.batchSize], ['Customer', b.customer], ['Invoice / challan', b.invoiceNo],
+        ['Dispatch date', fYmd(b.dispatchDate)], ['Document', d.label], ['Verified scan version', v ? 'v' + v.versionNo + ' (' + v.actualPages + ' pages)' : 'v' + d.currentVersion],
+        ['Verified OK on', fDT(d.verifiedAt)], ['Hardcopy due by', fD(d.hardcopyDueAt)], ['Number of pages handed over', ''], ['Handed over by (' + d.dept + ') - name, sign, date', ''],
+        ['Received by (QA) - name, sign, date', ''], ['Storage location', '']].map(function (r) { return '<tr><th style="text-align:left;width:40%;padding:8px">' + esc(r[0]) + '</th><td style="padding:8px;height:30px">' + esc(r[1]) + '</td></tr>'; }).join('') +
+      '</tbody></table><p style="font-size:11px;margin-top:12px">Printed from BDVS on ' + fDT(Date.now()) + ' by ' + esc(S.boot.user.name) + '. Attach this slip to the original hardcopy.</p>';
+    call('logPrint', { docId: docId }).catch(function () {});
+    setTimeout(function () { window.print(); }, 100);
+  };
+  if (S.batch && S.batch.id === batchId) return go2(S.batch, S.batch.docs.filter(function (x) { return x.id === docId; })[0]);
+  call('getBatch', { batchId: batchId }).then(function (b) { S.batch = b; go2(b, b.docs.filter(function (x) { return x.id === docId; })[0]); }).catch(function (e) { toast(e.message); });
+}
+function closeBatchDlg(batchId, batchNo) {
+  var bg = openModal(mh('Complete Batch Data Verification') + '<p>You are completing Batch Data Verification for batch <b>' + esc(batchNo) + '</b>. Both scanned documents are verified, both originals are received, and there are no open discrepancies. The batch record will be <b>locked</b>.</p>' +
+    '<label class="f">Remarks (optional)</label><textarea id="cl1"></textarea><label class="f" style="margin-top:8px">Your password (electronic signature)</label><input type="password" id="cl2">' +
+    '<div id="clerr"></div><div class="row" style="justify-content:flex-end;margin-top:10px"><button class="btn sec" onclick="closeModal(this)">Cancel</button><button class="btn ok" id="clb">Complete &amp; close batch</button></div>');
+  $('clb').onclick = function () {
+    var b = $('clb'); busy(b, true, 'Signing');
+    call('closeBatch', { batchId: batchId, remarks: $('cl1').value, password: $('cl2').value }).then(function () {
+      document.querySelectorAll('.modal-bg').forEach(function (m) { m.remove(); }); toast('Batch Data Verification completed for ' + batchNo + '.'); go(S.view);
+    }).catch(function (e) { busy(b, false); showErr('clerr', e); });
+  };
+}
+
+/* ======================= register dispatch ======================= */
+var PRODUCTS = { ALP: 'Aluminium Hydroxide Gel Paste', MGP: 'Magnesium Hydroxide Paste' };
+var KINDS = [['BMR', 'Master BMR'], ['STP', 'STP'], ['SPEC', 'Specification'], ['COA', 'COA format']];
+var NOISE = /\b(ltd|limited|pvt|private|ok|pending|new|old|correction|extra|batch|size|kgs?|lab|labs|laboratories|healthcare|healthc|health|pharma|pharmaceuticals?|life|science|sciences|india|for|the|and|ip|bp|usp|ih)\b|\d+(\.\d+)?\s*%|\d{1,2}\.\d{1,2}\.\d{2,4}|\(\d+\)|[0-9]+\s*kgs?/gi;
+function custKey(n) { return String(n || '').toLowerCase().replace(/&/g, ' ').replace(NOISE, ' ').replace(/[^a-z0-9]+/g, ' ').trim(); }
+function codeOf(batchNo, product) {
+  var bn = String(batchNo || '').trim().toUpperCase();
+  if (/^ALP/.test(bn)) return 'ALP';
+  if (/^MGP/.test(bn)) return 'MGP';
+  var p = String(product || '').toLowerCase();
+  return /alum/.test(p) ? 'ALP' : /magn/.test(p) ? 'MGP' : '';
+}
+/** Mirrors the server: saved customer profile first, then best name match, then "General". */
+function suggestDocs(code, customer) {
+  var out = { BMR: '', STP: '', SPEC: '', COA: '' };
+  if (!S.master || !code) return out;
+  var prof = S.master.profiles.filter(function (p) { return p.key === code + '|' + custKey(customer); })[0];
+  var toks = custKey(customer).split(' ').filter(function (t) { return t.length >= 3; });
+  KINDS.forEach(function (k) {
+    var kind = k[0];
+    if (prof) { out[kind] = prof[{ BMR: 'bmrId', STP: 'stpId', SPEC: 'specId', COA: 'coaId' }[kind]] || ''; return; }
+    var list = S.master.docs.filter(function (d) { return d.productCode === code && d.kind === kind; });
+    var best = null, bs = 0;
+    list.forEach(function (d) {
+      var hk = ' ' + custKey(d.customerHint) + ' ', sc = 0;
+      toks.forEach(function (t) { if (hk.indexOf(' ' + t) >= 0) sc += t.length; });
+      if (sc > bs) { best = d; bs = sc; }
+    });
+    if (!best) best = list.filter(function (d) { return /general/i.test(d.customerHint); })[0];
+    out[kind] = best ? best.id : '';
+  });
+  out._profile = !!prof;
+  return out;
+}
+function masterOptions(code, kind, sel) {
+  var list = (S.master ? S.master.docs : []).filter(function (d) { return d.productCode === code && d.kind === kind; })
+    .sort(function (a, b) { return a.title.localeCompare(b.title, undefined, { numeric: true }); });
+  return '<option value="">- none / not applicable -</option>' + list.map(function (d) {
+    return '<option value="' + d.id + '" ' + (d.id === sel ? 'selected' : '') + '>' + esc(d.title) + '</option>';
+  }).join('');
+}
+function masterDocsHtml(md) {
+  if (!md) return '';
+  var parts = KINDS.filter(function (k) { return md[k[0]]; }).map(function (k) {
+    var d = md[k[0]];
+    return '<div><b>' + k[1] + '</b>' + (d.url ? '<a href="' + esc(d.url) + '" target="_blank" rel="noopener">' + esc(d.title) + '</a>' : esc(d.title)) + '</div>';
+  });
+  return parts.length ? '<div class="card" style="padding:10px 12px;background:#f8fafc"><div class="small" style="margin-bottom:4px"><b>Verify against these GMP master documents</b></div><div class="facts" style="margin:0">' + parts.join('') + '</div></div>' : '';
+}
+function loadMaster() { return call('getDocMaster').then(function (m) { S.master = m; return m; }); }
+
+function viewRegister(v) {
+  return loadMaster().then(function () {
+    var n = S.master.docs.length;
+    v.innerHTML = '<h2>Register dispatched batches</h2>' +
+      (n ? '<p class="muted">Enter what Production gives you: <b>batch no., dispatch date and customer</b> (plus invoice / challan). The product comes from the batch no. (ALP/... or MGP/...) and the <b>BMR, STP, specification, COA format and batch size</b> are filled in from the GMP folder (' + n + ' master documents indexed). Confirm them once per customer and they are remembered.</p>'
+        : '<div class="err">The GMP folder has not been indexed yet, so documents cannot be auto-filled. Go to Settings &gt; GMP document master &gt; "Scan GMP folder".</div>') +
+      '<p class="small">Upload deadline = dispatch date + ' + S.boot.config.uploadDays + ' days, 23:59 IST (moved to the next working day if it falls on a Sunday or holiday). PRD and QC are emailed immediately.</p>' +
+      '<div class="row" style="margin-bottom:10px"><button class="btn sm" id="tab1">Single batch</button><button class="btn sm sec" id="tab2">Bulk: paste list from Production</button></div>' +
+      '<div id="regbody"></div>';
+    $('tab1').onclick = function () { $('tab1').className = 'btn sm'; $('tab2').className = 'btn sm sec'; drawSingle(); };
+    $('tab2').onclick = function () { $('tab2').className = 'btn sm'; $('tab1').className = 'btn sm sec'; drawBulk(); };
+    drawSingle();
+  });
+}
+function drawSingle() {
+  $('regbody').innerHTML = '<div class="card"><div class="grid2">' +
+    '<div><label class="f">Batch number</label><input type="text" id="r2" placeholder="e.g. ALP/214(25-26)"></div>' +
+    '<div><label class="f">Dispatch date</label><input type="date" id="r4" max="' + todayYmd() + '" value="' + todayYmd() + '"></div>' +
+    '<div><label class="f">Customer / company</label><input type="text" id="r6" list="custl"><datalist id="custl">' +
+    uniqList(S.master.profiles.map(function (p) { return p.customer; })).map(function (c) { return '<option>' + esc(c) + '</option>'; }).join('') + '</datalist></div>' +
+    '<div><label class="f">Invoice / challan no.</label><input type="text" id="r5"></div>' +
+    '<div><label class="f">Product</label><select id="r1"><option value="">(from batch no.)</option><option value="ALP">' + PRODUCTS.ALP + '</option><option value="MGP">' + PRODUCTS.MGP + '</option></select></div>' +
+    '<div><label class="f">Batch size</label><input type="text" id="r3" placeholder="auto from BMR"></div>' +
+    '<div><label class="f">Market</label><select id="r7"><option>Domestic</option><option>Export</option></select></div>' +
+    '<div><label class="f">Plant / site</label><select id="r8"><option>Pharchem Pvt. Ltd.</option><option>Enicar Pharmaceuticals Pvt. Ltd.</option></select></div>' +
+    '</div><h3>GMP master documents <span class="small" id="r_src"></span></h3><div class="grid2">' +
+    KINDS.map(function (k) { return '<div><label class="f">' + k[1] + '</label><select id="m_' + k[0] + '"></select></div>'; }).join('') + '</div>' +
+    '<label class="f" style="margin-top:10px">Remarks (e.g. partial consignment - first dispatch date used)</label><textarea id="r9"></textarea>' +
+    '<div id="rerr"></div><div class="row" style="justify-content:flex-end;margin-top:10px"><button class="btn" id="rb">Register dispatch</button></div></div>';
+  var refill = function () {
+    var code = $('r1').value || codeOf($('r2').value);
+    var sug = suggestDocs(code, $('r6').value);
+    KINDS.forEach(function (k) { $('m_' + k[0]).innerHTML = code ? masterOptions(code, k[0], sug[k[0]]) : '<option value="">enter batch no. first</option>'; });
+    $('r_src').textContent = !code ? '' : sug._profile ? '(remembered for this customer)' : $('r6').value ? '(best match - please check)' : '(general - enter the customer)';
+    var bmr = S.master.docs.filter(function (d) { return d.id === sug.BMR; })[0];
+    var prof = S.master.profiles.filter(function (p) { return p.key === code + '|' + custKey($('r6').value); })[0];
+    if (!$('r3').dataset.typed) $('r3').value = (prof && prof.batchSize) || (bmr && bmr.batchSize) || '';
+    if (prof && prof.market) $('r7').value = prof.market;
+  };
+  ['r2', 'r6', 'r1'].forEach(function (id) { $(id).addEventListener('change', refill); $(id).addEventListener('input', refill); });
+  $('m_BMR') && $('m_BMR').addEventListener('change', function () {
+    var bmr = S.master.docs.filter(function (d) { return d.id === $('m_BMR').value; })[0];
+    if (bmr && bmr.batchSize && !$('r3').dataset.typed) $('r3').value = bmr.batchSize;
+  });
+  $('r3').addEventListener('input', function () { $('r3').dataset.typed = '1'; });
+  refill();
+  $('rb').onclick = function () {
+    var b = $('rb'); busy(b, true);
+    var ids = {}; KINDS.forEach(function (k) { ids[k[0]] = $('m_' + k[0]).value; });
+    call('registerBatch', { product: $('r1').value, batchNo: $('r2').value, batchSize: $('r3').value, dispatchDate: $('r4').value, invoiceNo: $('r5').value,
+      customer: $('r6').value, market: $('r7').value, site: $('r8').value, remarks: $('r9').value, masterDocIds: ids })
+      .then(function (r) {
+        busy(b, false);
+        $('rerr').innerHTML = '<div class="okmsg">Registered ' + esc(r.product) + ' batch. PRD and QC have been notified. Upload deadline: <b>' + fDT(r.dueAt) + '</b>.</div>';
+        ['r2', 'r3', 'r5', 'r9'].forEach(function (id) { $(id).value = ''; }); delete $('r3').dataset.typed;
+        loadMaster(); loadDash();
+      }).catch(function (e) { busy(b, false); showErr('rerr', e); });
+  };
+}
+function uniqList(a) { var o = {}; return a.filter(function (x) { var k = String(x).toLowerCase(); if (!x || o[k]) return false; o[k] = 1; return true; }).sort(); }
+
+var BULK = [];
+function drawBulk() {
+  $('regbody').innerHTML = '<div class="card"><p>Copy the rows from Production\'s Excel sheet / message and paste below - one batch per line. Columns (tab or comma separated, in this order):</p>' +
+    '<p><code>Batch No. | Dispatch date | Customer | Invoice / challan no. | Batch size (optional)</code></p>' +
+    '<p class="small">Dates as DD.MM.YYYY, DD/MM/YYYY or DD-MMM-YYYY. A header row is ignored. Product, BMR, STP, specification, COA format and batch size are filled in automatically - check the preview before registering.</p>' +
+    '<textarea id="bk" style="min-height:140px;font-family:monospace" placeholder="ALP/214(25-26)\t19.11.2026\tDynemic Products Ltd\tINV-1234\nMGP/101(26-27)\t19.11.2026\tAbbott India\tCH-556"></textarea>' +
+    '<div class="row" style="margin-top:8px"><select id="bk7" style="max-width:180px"><option value="">Market: remembered / Domestic</option><option>Domestic</option><option>Export</option></select>' +
+    '<select id="bk8" style="max-width:260px"><option>Pharchem Pvt. Ltd.</option><option>Enicar Pharmaceuticals Pvt. Ltd.</option></select><button class="btn sec" id="bkp">Preview</button></div>' +
+    '<div id="bkv" style="margin-top:10px"></div></div>';
+  $('bkp').onclick = previewBulk;
+}
+function parseDate(s) {
+  s = String(s || '').trim(); var m;
+  if ((m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/))) return m[1] + '-' + pad(+m[2]) + '-' + pad(+m[3]);
+  if ((m = s.match(/^(\d{1,2})[.\/-](\d{1,2})[.\/-](\d{2,4})$/))) return (m[3].length === 2 ? '20' + m[3] : m[3]) + '-' + pad(+m[2]) + '-' + pad(+m[1]);
+  if ((m = s.match(/^(\d{1,2})[.\/\- ]([A-Za-z]{3})[A-Za-z]*[.\/\- ](\d{2,4})$/))) {
+    var i = MON.map(function (x) { return x.toLowerCase(); }).indexOf(m[2].toLowerCase());
+    if (i >= 0) return (m[3].length === 2 ? '20' + m[3] : m[3]) + '-' + pad(i + 1) + '-' + pad(+m[1]);
+  }
+  return '';
+}
+function previewBulk() {
+  var lines = $('bk').value.split(/\r?\n/).map(function (l) { return l.trim(); }).filter(Boolean);
+  BULK = [];
+  lines.forEach(function (l) {
+    var c = (l.indexOf('\t') >= 0 ? l.split('\t') : l.split(/\s*[,;|]\s*/)).map(function (x) { return x.trim(); });
+    if (/batch/i.test(c[0]) && /date/i.test(c[1] || '')) return; // header
+    var r = { batchNo: c[0] || '', dispatchRaw: c[1] || '', dispatchDate: parseDate(c[1]), customer: c[2] || '', invoiceNo: c[3] || '', batchSize: c[4] || '' };
+    r.code = codeOf(r.batchNo);
+    var sug = suggestDocs(r.code, r.customer);
+    r.ids = { BMR: sug.BMR, STP: sug.STP, SPEC: sug.SPEC, COA: sug.COA }; r.remembered = sug._profile;
+    var bmr = S.master.docs.filter(function (d) { return d.id === sug.BMR; })[0];
+    var prof = S.master.profiles.filter(function (p) { return p.key === r.code + '|' + custKey(r.customer); })[0];
+    if (!r.batchSize) r.batchSize = (prof && prof.batchSize) || (bmr && bmr.batchSize) || '';
+    r.err = !r.batchNo ? 'No batch no.' : !r.code ? 'Product not recognised (batch no. must start ALP or MGP)' : !r.dispatchDate ? 'Bad date "' + r.dispatchRaw + '"' :
+      r.dispatchDate > todayYmd() ? 'Date in future' : !r.customer ? 'No customer' : !r.invoiceNo ? 'No invoice / challan' : !r.batchSize ? 'Batch size unknown' : '';
+    BULK.push(r);
+  });
+  drawBulkPreview();
+}
+function drawBulkPreview() {
+  if (!BULK.length) { $('bkv').innerHTML = '<div class="err">Nothing to preview.</div>'; return; }
+  var okN = BULK.filter(function (r) { return !r.err; }).length;
+  $('bkv').innerHTML = '<div class="tw"><table><thead><tr><th>#</th><th>Batch</th><th>Dispatch</th><th>Customer / invoice</th><th>Size</th>' + KINDS.map(function (k) { return '<th>' + k[1] + '</th>'; }).join('') + '<th>Check</th></tr></thead><tbody>' +
+    BULK.map(function (r, i) {
+      return '<tr><td>' + (i + 1) + '</td><td><b>' + esc(r.batchNo) + '</b><br><span class="small">' + esc(PRODUCTS[r.code] || '?') + '</span></td><td>' + (r.dispatchDate ? fYmd(r.dispatchDate) : esc(r.dispatchRaw)) + '</td><td>' + esc(r.customer) + '<br><span class="small">' + esc(r.invoiceNo) + '</span></td>' +
+        '<td><input type="text" value="' + esc(r.batchSize) + '" style="width:90px" oninput="BULK[' + i + '].batchSize=this.value;BULK[' + i + '].err=BULK[' + i + '].err===\'Batch size unknown\'&&this.value?\'\':BULK[' + i + '].err"></td>' +
+        KINDS.map(function (k) { return '<td><select style="min-width:150px;font-size:12px" onchange="BULK[' + i + '].ids.' + k[0] + '=this.value">' + (r.code ? masterOptions(r.code, k[0], r.ids[k[0]]) : '') + '</select></td>'; }).join('') +
+        '<td>' + (r.err ? '<span style="color:var(--bad)">' + esc(r.err) + '</span>' : r.remembered ? '<span class="chip c-ok">remembered</span>' : '<span class="chip c-warn">check match</span>') + '</td></tr>';
+    }).join('') + '</tbody></table></div><div id="bkerr"></div><div class="row" style="justify-content:flex-end;margin-top:10px"><span class="small">' + okN + ' of ' + BULK.length + ' rows ready</span><button class="btn" id="bkgo" ' + (okN ? '' : 'disabled') + '>Register ' + okN + ' batch(es)</button></div>';
+  $('bkgo').onclick = function () {
+    var b = $('bkgo'); busy(b, true, 'Registering');
+    var rows = BULK.filter(function (r) { return !r.err; }).map(function (r) {
+      return { batchNo: r.batchNo, dispatchDate: r.dispatchDate, customer: r.customer, invoiceNo: r.invoiceNo, batchSize: r.batchSize, market: $('bk7').value, site: $('bk8').value, masterDocIds: r.ids };
+    });
+    call('bulkRegister', { rows: rows }).then(function (res) {
+      busy(b, false);
+      var ok = res.filter(function (x) { return x.ok; });
+      $('bkv').innerHTML = '<div class="' + (ok.length === res.length ? 'okmsg' : 'err') + '">' + ok.length + ' of ' + res.length + ' batches registered; PRD and QC notified.</div><table><tbody>' + res.map(function (x) {
+        return '<tr><td>' + esc(x.batchNo) + '</td><td>' + (x.ok ? '<span class="chip c-ok">Registered</span> upload due ' + fDT(x.dueAt) : '<span class="chip c-bad">Not registered</span> ' + esc(x.error)) + '</td></tr>';
+      }).join('') + '</tbody></table>';
+      $('bk').value = res.filter(function (x) { return !x.ok; }).length ? $('bk').value : '';
+      loadMaster(); loadDash();
+    }).catch(function (e) { busy(b, false); showErr('bkerr', e); });
+  };
+}
+
+/* ======================= audit & reminders ======================= */
+function viewAudit(v) {
+  v.innerHTML = '<h2>Audit trail</h2><div class="row" style="margin-bottom:10px"><input type="text" id="aq" placeholder="Batch no. (blank = all)" style="max-width:220px">' +
+    '<label class="small">From <input type="date" id="af"></label><label class="small">To <input type="date" id="at"></label><button class="btn sm" id="ab">Show</button>' +
+    '<button class="btn sm sec" id="ax">Export CSV</button><button class="btn sm sec" id="av">Verify integrity (hash chain)</button><span id="avr"></span></div><div class="tw" id="atb"></div>';
+  var rows = [];
+  var load = function () {
+    $('atb').innerHTML = '<p class="muted" style="padding:10px"><span class="spin"></span></p>';
+    return call('auditLog', { batchNo: $('aq').value, from: $('af').value, to: $('at').value }).then(function (r) {
+      rows = r;
+      $('atb').innerHTML = '<table><thead><tr><th>#</th><th>Date-time (IST)</th><th>User</th><th>Action</th><th>Batch</th><th>Old value</th><th>New value / details</th><th>Reason</th></tr></thead><tbody>' +
+        r.map(function (a) { return '<tr><td>' + a.seq + '</td><td>' + fDT(a.timestamp) + '</td><td>' + esc(a.userName) + '<br><span class="small">' + esc(a.role) + '</span></td><td><b>' + esc(a.action) + '</b><br><span class="small">' + esc(a.objectType) + ' ' + esc(a.objectId) + '</span></td><td>' + esc(a.batchNo) + '</td><td class="small">' + esc(a.oldValue) + '</td><td class="small">' + esc(a.newValue) + '</td><td class="small">' + esc(a.reason) + '</td></tr>'; }).join('') +
+        '</tbody></table>' + (r.length >= 2000 ? '<p class="small">Showing latest 2000 entries; narrow the filter.</p>' : '');
+    });
+  };
+  $('ab').onclick = load;
+  $('ax').onclick = function () {
+    download('BDVS_audit_trail_' + todayYmd() + '.csv', csv([['Seq', 'Timestamp (IST)', 'User', 'Role', 'Action', 'Object', 'Object ID', 'Batch', 'Old value', 'New value', 'Reason', 'Client', 'Hash']]
+      .concat(rows.map(function (a) { return [a.seq, fDT(a.timestamp), a.userName, a.role, a.action, a.objectType, a.objectId, a.batchNo, a.oldValue, a.newValue, a.reason, a.client, a.hash]; }))));
+  };
+  $('av').onclick = function () {
+    $('avr').innerHTML = '<span class="spin"></span>';
+    call('verifyAudit').then(function (r) {
+      $('avr').innerHTML = r.ok ? '<span class="chip c-ok">Intact - ' + r.count + ' entries</span>' : '<span class="chip c-bad">Problem at entry ' + esc(r.badSeq) + ': ' + esc(r.reason) + '</span>';
+    }).catch(function (e) { $('avr').textContent = e.message; });
+  };
+  return load();
+}
+function viewReminders(v) {
+  return call('reminderLog').then(function (r) {
+    v.innerHTML = '<h2>Reminder & email log</h2><p class="muted">Reminders run automatically every hour, even when nobody is logged in. Latest 500.</p><div class="tw"><table><thead><tr><th>Sent (IST)</th><th>Type</th><th>Batch</th><th>Subject</th><th>To / cc</th><th>Status</th></tr></thead><tbody>' +
+      r.map(function (x) { return '<tr><td>' + fDT(x.sentAt) + '</td><td class="small">' + esc(x.type) + '</td><td>' + esc(x.batchNo) + '</td><td>' + esc(x.subject) + '</td><td class="small">' + esc(x.to) + (x.cc ? '<br>cc ' + esc(x.cc) : '') + '</td><td>' +
+        chip({ SENT: ['Sent', 'c-ok'], FAILED: ['Failed', 'c-bad'], SKIPPED: ['Skipped', 'c-warn'] }, x.status) + (x.error ? '<br><span class="small" style="color:var(--bad)">' + esc(x.error) + '</span>' : '') + '</td></tr>'; }).join('') +
+      '</tbody></table></div>';
+  });
+}
+
+/* ======================= settings ======================= */
+function viewSettings(v) {
+  return call('getSettings').then(function (s) {
+    var admin = role() === 'ADMIN';
+    var noEmails = ['EMAIL_PRD', 'EMAIL_QC', 'EMAIL_QA'].some(function (k) { var r = s.settings.filter(function (x) { return x.key === k; })[0]; return !r || !r.value; });
+    v.innerHTML = '<h2>Settings</h2>' +
+      (noEmails ? '<div class="err">Department email addresses are not set yet - reminders cannot be sent. ' + (admin ? 'Fill in EMAIL_PRD, EMAIL_QC, EMAIL_QA and EMAIL_ESCALATION below.' : 'Ask the administrator to set them.') + '</div>' : '') +
+      '<div class="card"><h3 style="margin-top:0">System settings</h3>' + (admin ? '' : '<p class="small">Only the administrator can change these.</p>') +
+      '<div class="tw"><table><thead><tr><th>Setting</th><th>Value</th><th>Description</th>' + (admin ? '<th></th>' : '') + '</tr></thead><tbody>' +
+      s.settings.map(function (r, i) {
+        return '<tr><td><code>' + esc(r.key) + '</code></td><td>' + (admin ? '<input type="text" id="st' + i + '" value="' + esc(r.value) + '">' : esc(r.value)) + '</td><td class="small">' + esc(r.description) + '</td>' +
+          (admin ? '<td><button class="btn sm" onclick="saveSetting(\'' + r.key + '\',\'st' + i + '\',this)">Save</button></td>' : '') + '</tr>';
+      }).join('') + '</tbody></table></div>' +
+      (admin ? '<div class="row" style="margin-top:10px"><button class="btn sm sec" id="tst">Send test email to departments</button><span class="small">Emails left today (Google quota): ' + (s.remainingEmailQuota == null ? '?' : s.remainingEmailQuota) + '</span></div>' : '') + '</div>' +
+      '<div class="card"><h3 style="margin-top:0">GMP document master</h3><p class="small">BDVS reads the GMP folder (skipping Draft / Obsolete folders) and indexes every BMR, STP, specification (SPE) and COA format (PCF-FMR) by product and customer, so batches are auto-filled at registration. Re-scan after you add or revise documents in the folder.</p>' +
+      '<div class="row"><input type="text" id="gmpf" placeholder="GMP folder link or ID" value="' + esc((s.settings.filter(function (x) { return x.key === 'GMP_FOLDER_ID'; })[0] || {}).value || '') + '" style="max-width:420px"><button class="btn sm" id="gmpb">Scan GMP folder</button><span id="gmpr" class="small"></span></div>' +
+      '<div id="gmpl" style="margin-top:8px"></div></div>' +
+      '<div class="card"><h3 style="margin-top:0">Holiday calendar <span class="small">(Sundays are always excluded; add declared holidays)</span></h3>' +
+      '<div class="row"><input type="date" id="hd" style="max-width:180px"><input type="text" id="hn" placeholder="Holiday name" style="max-width:260px"><button class="btn sm" id="hb">Add holiday</button></div>' +
+      '<table style="margin-top:8px"><tbody>' + (s.holidays.length ? s.holidays.map(function (h) {
+        return '<tr><td>' + fYmd(h.date) + '</td><td>' + esc(h.name) + '</td><td class="small">added by ' + esc(h.addedBy) + '</td><td><button class="btn sm sec" onclick="removeHoliday(\'' + h.date + '\')">Remove</button></td></tr>';
+      }).join('') : '<tr><td class="muted">No holidays declared.</td></tr>') + '</tbody></table></div>' +
+      Object.keys(S.boot.docTypes).map(function (t) {
+        var items = s.checklists.filter(function (c) { return c.docType === t; }).sort(function (a, b) { return a.order - b.order; });
+        return '<div class="card"><h3 style="margin-top:0">QA verification checklist - ' + esc(S.boot.docTypes[t].label) + '</h3><table><tbody>' + items.map(function (c) {
+          return '<tr style="' + (c.active === 'Y' ? '' : 'opacity:.5') + '"><td style="width:30px">' + c.order + '</td><td>' + esc(c.item) + (c.active === 'Y' ? '' : ' <span class="chip c-gray">inactive</span>') + '</td><td style="white-space:nowrap">' +
+            '<button class="btn sm sec" onclick="editCk(\'' + c.id + '\',\'' + t + '\')">Edit</button> <button class="btn sm sec" onclick="toggleCk(\'' + c.id + '\',\'' + t + '\',' + (c.active !== 'Y') + ')">' + (c.active === 'Y' ? 'Deactivate' : 'Activate') + '</button></td></tr>';
+        }).join('') + '</tbody></table><div class="row" style="margin-top:8px"><input type="text" id="nk_' + t + '" placeholder="New checklist item"><button class="btn sm" onclick="addCk(\'' + t + '\')">Add item</button></div></div>';
+      }).join('');
+    S.ckData = s.checklists;
+    if (admin) $('tst').onclick = function () { var b = this; busy(b, true); call('sendTestEmail').then(function (r) { busy(b, false); toast('Test email ' + r.status + ' to ' + r.sentTo.join(', ')); }).catch(function (e) { busy(b, false); toast(e.message); }); };
+    $('gmpb').onclick = function () {
+      var b = this; busy(b, true, 'Scanning folder');
+      call('importDocMaster', { folderId: $('gmpf').value }).then(function (r) {
+        busy(b, false); $('gmpr').textContent = r.total + ' documents indexed (' + r.added + ' new, ' + r.updated + ' refreshed, ' + r.retired + ' removed).'; drawMasterList();
+      }).catch(function (e) { busy(b, false); $('gmpr').innerHTML = '<span style="color:var(--bad)">' + esc(e.message) + '</span>'; });
+    };
+    drawMasterList();
+    $('hb').onclick = function () { call('addHoliday', { date: $('hd').value, name: $('hn').value }).then(function () { toast('Holiday added.'); go('settings'); }).catch(function (e) { toast(e.message); }); };
+  });
+}
+function drawMasterList() {
+  loadMaster().then(function (m) {
+    var by = {};
+    m.docs.forEach(function (d) { var k = d.productCode + ' ' + d.kind; (by[k] = by[k] || []).push(d); });
+    $('gmpl').innerHTML = !m.docs.length ? '<p class="muted">Not indexed yet.</p>' : '<details><summary>' + m.docs.length + ' master documents indexed &middot; ' + m.profiles.length + ' customer profiles remembered</summary>' +
+      Object.keys(by).sort().map(function (k) {
+        return '<h3>' + esc(k.replace('SPEC', 'Specification').replace('COA', 'COA format')) + ' (' + by[k].length + ')</h3><div class="small">' + by[k].sort(function (a, b) { return a.title.localeCompare(b.title, undefined, { numeric: true }); })
+          .map(function (d) { return '<a href="' + esc(d.url) + '" target="_blank" rel="noopener">' + esc(d.title) + '</a>' + (d.batchSize ? ' (' + esc(d.batchSize) + ')' : ''); }).join(' &middot; ') + '</div>';
+      }).join('') +
+      (m.profiles.length ? '<h3>Customer profiles</h3><table><thead><tr><th>Product</th><th>Customer</th><th>BMR</th><th>STP</th><th>Spec</th><th>COA format</th><th>Size</th><th>Last used</th></tr></thead><tbody>' + m.profiles.map(function (p) {
+        var t = function (id) { var d = m.docs.filter(function (x) { return x.id === id; })[0]; return d ? esc(d.title) : '<span class="muted">-</span>'; };
+        return '<tr class="small"><td>' + p.productCode + '</td><td>' + esc(p.customer) + '</td><td>' + t(p.bmrId) + '</td><td>' + t(p.stpId) + '</td><td>' + t(p.specId) + '</td><td>' + t(p.coaId) + '</td><td>' + esc(p.batchSize) + '</td><td>' + fD(p.updatedAt) + '</td></tr>';
+      }).join('') + '</tbody></table>' : '') + '</details>';
+  }).catch(function (e) { $('gmpl').innerHTML = '<div class="err">' + esc(e.message) + '</div>'; });
+}
+function saveSetting(key, inputId, btn) {
+  var val = $(inputId).value;
+  askText('Change ' + key, 'Reason for change (recorded in the audit trail)').then(function (reason) {
+    if (!reason) return;
+    busy(btn, true);
+    call('saveSetting', { key: key, value: val, reason: reason }).then(function () { busy(btn, false); toast(key + ' saved.'); }).catch(function (e) { busy(btn, false); toast(e.message); });
+  });
+}
+function removeHoliday(date) {
+  askText('Remove holiday ' + fYmd(date), 'Reason (recorded in the audit trail)').then(function (r) {
+    if (r) call('removeHoliday', { date: date, reason: r }).then(function () { go('settings'); }).catch(function (e) { toast(e.message); });
+  });
+}
+function editCk(id, t) {
+  var c = S.ckData.filter(function (x) { return x.id === id; })[0];
+  var bg = openModal(mh('Edit checklist item') + '<textarea id="ek" style="min-height:90px">' + esc(c.item) + '</textarea><label class="f" style="margin-top:8px">Reason for change</label><input type="text" id="ekr">' +
+    '<div id="ekerr"></div><div class="row" style="justify-content:flex-end;margin-top:10px"><button class="btn" id="ekb">Save</button></div>');
+  $('ekb').onclick = function () {
+    if (!$('ekr').value.trim()) return showErr('ekerr', 'Give a reason.');
+    call('saveChecklistItem', { id: id, docType: t, item: $('ek').value, active: c.active === 'Y', reason: $('ekr').value }).then(function () { bg.remove(); refreshBoot().then(function () { go('settings'); }); }).catch(function (e) { showErr('ekerr', e); });
+  };
+}
+function toggleCk(id, t, active) {
+  var c = S.ckData.filter(function (x) { return x.id === id; })[0];
+  askText((active ? 'Activate' : 'Deactivate') + ' checklist item', 'Reason (recorded in the audit trail)').then(function (r) {
+    if (r) call('saveChecklistItem', { id: id, docType: t, item: c.item, active: active, reason: r }).then(function () { refreshBoot().then(function () { go('settings'); }); }).catch(function (e) { toast(e.message); });
+  });
+}
+function addCk(t) {
+  var txt = $('nk_' + t).value;
+  call('saveChecklistItem', { docType: t, item: txt }).then(function () { refreshBoot().then(function () { go('settings'); }); }).catch(function (e) { toast(e.message); });
+}
+function refreshBoot() { return call('bootstrap').then(function (b) { S.boot = b; }); }
+
+/* ======================= users ======================= */
+function viewUsers(v) {
+  return call('listUsers').then(function (users) {
+    S.users = users;
+    v.innerHTML = '<h2>Users</h2><div class="card"><h3 style="margin-top:0">Add a user</h3><p class="small">One login per person. Department mailboxes receive notifications automatically; a personal email here also gets that department\'s reminders. Users are never deleted - disable them instead.</p>' +
+      '<div class="grid2"><div><label class="f">Full name</label><input type="text" id="u1"></div><div><label class="f">Username</label><input type="text" id="u2" placeholder="e.g. rpatil"></div>' +
+      '<div><label class="f">Email (optional)</label><input type="email" id="u3"></div><div><label class="f">Role</label><select id="u4"><option value="PRD">Production (uploads BMR / BPR)</option><option value="QC">QC (uploads COA + raw data)</option><option value="QA">QA (registers, verifies, closes)</option><option value="ADMIN">Administrator (users & settings only)</option></select></div></div>' +
+      '<div id="uerr"></div><div class="row" style="justify-content:flex-end;margin-top:10px"><button class="btn" id="ub">Create user</button></div></div>' +
+      '<div class="tw"><table><thead><tr><th>Name</th><th>Username</th><th>Role</th><th>Email</th><th>Status</th><th>Created</th><th></th></tr></thead><tbody>' +
+      users.map(function (u) {
+        return '<tr style="' + (u.active ? '' : 'opacity:.55') + '"><td>' + esc(u.name) + '</td><td>' + esc(u.username) + '</td><td>' + esc(u.role) + '</td><td>' + esc(u.email) + '</td><td>' +
+          (u.active ? '<span class="chip c-ok">Active</span>' : '<span class="chip c-gray">Disabled</span>') + (u.locked ? ' <span class="chip c-bad">Locked</span>' : '') + (u.mustChange ? ' <span class="chip c-warn">Must change pw</span>' : '') +
+          '</td><td class="small">' + fD(u.createdAt) + '<br>' + esc(u.createdBy) + '</td><td style="white-space:nowrap"><button class="btn sm sec" onclick="editUser(\'' + u.id + '\')">Edit</button> <button class="btn sm sec" onclick="resetPw(\'' + u.id + '\')">Reset password</button>' +
+          (u.locked ? ' <button class="btn sm" onclick="userUpd(\'' + u.id + '\',{unlock:true})">Unlock</button>' : '') + '</td></tr>';
+      }).join('') + '</tbody></table></div>';
+    $('ub').onclick = function () {
+      var b = $('ub'); busy(b, true);
+      call('createUser', { name: $('u1').value, username: $('u2').value, email: $('u3').value, role: $('u4').value }).then(function (r) {
+        busy(b, false); showTemp(r);
+      }).catch(function (e) { busy(b, false); showErr('uerr', e); });
+    };
+  });
+}
+function showTemp(r) {
+  var bg = openModal(mh('Temporary password') + '<p>Give these details to the user personally. They must set their own password at first login.</p><div class="card"><div>Username: <b>' + esc(r.username) + '</b></div><div>Temporary password: <b style="font-family:monospace;font-size:16px">' + esc(r.tempPassword) + '</b></div></div>' +
+    '<p class="small">This password is shown only once.</p><div class="row" style="justify-content:flex-end"><button class="btn" id="tpok">Done</button></div>');
+  $('tpok').onclick = function () { bg.remove(); go('users'); };
+}
+function editUser(id) {
+  var u = S.users.filter(function (x) { return x.id === id; })[0];
+  var bg = openModal(mh('Edit ' + esc(u.username)) + '<div class="grid2"><div><label class="f">Full name</label><input type="text" id="e1" value="' + esc(u.name) + '"></div><div><label class="f">Email</label><input type="email" id="e2" value="' + esc(u.email) + '"></div>' +
+    '<div><label class="f">Role</label><select id="e3">' + ['PRD', 'QC', 'QA', 'ADMIN'].map(function (r) { return '<option ' + (u.role === r ? 'selected' : '') + '>' + r + '</option>'; }).join('') + '</select></div>' +
+    '<div><label class="f">Status</label><select id="e4"><option value="1" ' + (u.active ? 'selected' : '') + '>Active</option><option value="0" ' + (u.active ? '' : 'selected') + '>Disabled</option></select></div></div>' +
+    '<label class="f" style="margin-top:8px">Reason for change</label><input type="text" id="e5"><div id="eerr"></div><div class="row" style="justify-content:flex-end;margin-top:10px"><button class="btn" id="eb">Save</button></div>');
+  $('eb').onclick = function () {
+    if (!$('e5').value.trim()) return showErr('eerr', 'Give a reason.');
+    call('updateUser', { id: id, name: $('e1').value, email: $('e2').value, role: $('e3').value, active: $('e4').value === '1', reason: $('e5').value })
+      .then(function () { bg.remove(); go('users'); }).catch(function (e) { showErr('eerr', e); });
+  };
+}
+function userUpd(id, p) { call('updateUser', Object.assign({ id: id }, p)).then(function () { go('users'); }).catch(function (e) { toast(e.message); }); }
+function resetPw(id) {
+  confirmBox('Reset password', 'Generate a new temporary password for this user? Their current password stops working immediately.').then(function (y) {
+    if (y) call('resetPassword', { id: id }).then(showTemp).catch(function (e) { toast(e.message); });
+  });
+}
+
+/* ======================= boot ======================= */
+(function init() {
+  if (window.pdfjsLib) { pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js'; }
+  var t = null;
+  try { t = sessionStorage.getItem('bdvs_t'); } catch (e) {}
+  if (t) { S.token = t; start().catch(function () { endSession(); }); }
+  else renderLogin();
+})();
+</script>
+</body>
+</html>
