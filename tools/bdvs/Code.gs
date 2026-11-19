@@ -54,6 +54,7 @@ var SHEETS = {
   Holidays: ['date', 'name', 'addedBy', 'addedAt'],
   DocMaster: ['id', 'productCode', 'kind', 'number', 'title', 'customerHint', 'batchSize', 'fileId', 'url', 'folderPath',
     'active', 'importedAt'],
+  ImportLog: ['id', 'runAt', 'by', 'rowsRead', 'registered', 'awaitingDispatch', 'alreadyRegistered', 'errors', 'details'],
   CustomerProfiles: ['key', 'productCode', 'customer', 'bmrId', 'stpId', 'specId', 'coaId', 'batchSize', 'market',
     'updatedAt', 'updatedBy'],
   Checklists: ['id', 'docType', 'item', 'order', 'active'],
@@ -85,7 +86,10 @@ var DEFAULT_SETTINGS = {
   PASSWORD_EXPIRY_DAYS: ['90', 'Force password change after this many days (0 = never)'],
   LOCKOUT_ATTEMPTS: ['5', 'Lock the account after this many failed logins'],
   APP_URL: ['', 'Web app URL used in email links (filled automatically when possible)'],
-  GMP_FOLDER_ID: ['', 'Google Drive ID of the GMP folder (BMRs, STPs, specifications, COA formats) used to auto-fill batch documents']
+  GMP_FOLDER_ID: ['', 'Google Drive ID of the GMP folder (BMRs, STPs, specifications, COA formats) used to auto-fill batch documents'],
+  PRODUCTION_SHEET_ID: ['', 'Google Sheet ID of the Daily Production & Dispatch Register filled by Production every evening'],
+  IMPORT_HOUR: ['20', 'Hour (IST, 0-23) at which the production register is read and dispatched batches are registered'],
+  REGISTER_MISSING_ALERT: ['YES', 'YES = alert Production and QA if no row was entered for a working day (enter NIL when there is no production)']
 };
 
 // Seeded from Pharchem GMP documents: SOPs QAGE/033 (approval & release of batch),
@@ -151,6 +155,7 @@ function onOpen() {
     .addItem('2. Install / repair reminder timer', 'installTriggers')
     .addSeparator()
     .addItem('Run reminders now', 'runReminders')
+    .addItem('Read production register now', 'runDailyImport')
     .addItem('Verify audit trail integrity', 'menuVerifyAudit')
     .addItem('Reset admin password', 'menuResetAdmin')
     .addToUi();
@@ -220,7 +225,7 @@ function setup() {
       '\n\nWrite this down now. You will be asked to change it at first login.';
   }
   installTriggers();
-  msg += '\n\nReminder timer installed (runs every hour).\nNext: Deploy > New deployment > Web app (see README).';
+  msg += '\n\nTimers installed: reminders every hour; production register read daily at ' + setting_('IMPORT_HOUR') + ':00.\nNext: Deploy > New deployment > Web app (see README).';
   try { SpreadsheetApp.getUi().alert('BDVS', msg, SpreadsheetApp.getUi().ButtonSet.OK); } catch (e) { Logger.log(msg); }
 }
 
@@ -229,6 +234,11 @@ function installTriggers() {
     if (t.getHandlerFunction() === 'runReminders') { ScriptApp.deleteTrigger(t); }
   });
   ScriptApp.newTrigger('runReminders').timeBased().everyHours(1).create();
+  ScriptApp.getProjectTriggers().forEach(function (t) {
+    if (t.getHandlerFunction() === 'runDailyImport') { ScriptApp.deleteTrigger(t); }
+  });
+  var h = Number(setting_('IMPORT_HOUR'));
+  ScriptApp.newTrigger('runDailyImport').timeBased().everyDays(1).atHour(isNaN(h) ? 20 : h).inTimezone('Asia/Kolkata').create();
 }
 
 function menuVerifyAudit() {
@@ -262,6 +272,11 @@ var ACTIONS = {
   bulkRegister: { roles: ['QA'], fn: apiBulkRegister_, write: true },
   getDocMaster: { roles: ['QA', 'ADMIN'], fn: apiGetDocMaster_ },
   importDocMaster: { roles: ['QA', 'ADMIN'], fn: apiImportDocMaster_, write: true },
+  importProduction: { roles: ['QA', 'ADMIN'], fn: function (u, p) { return importProductionRegister_(u, p.client); }, write: true },
+  createProductionSheet: { roles: ['QA', 'ADMIN'], fn: apiCreateProductionSheet_, write: true },
+  linkProductionSheet: { roles: ['QA', 'ADMIN'], fn: apiLinkProductionSheet_, write: true },
+  importLog: { roles: ['QA', 'ADMIN'], fn: function () { return rows_('ImportLog').slice(-60).reverse().map(function (r) { r = strip_(r); r.details = parseJson_(r.details, []); return r; }); } },
+  updateMasterDocs: { roles: ['QA'], fn: apiUpdateMasterDocs_, write: true },
   upload: { roles: ['PRD', 'QC'], fn: apiUpload_, write: true },
   decide: { roles: ['QA'], fn: apiDecide_, write: true },
   recordHardcopy: { roles: ['QA'], fn: apiRecordHardcopy_, write: true },
@@ -428,7 +443,11 @@ function apiDashboard_(user) {
     if (b.status === 'READY_TO_CLOSE') { c.readyToClose++; }
     if (b.ageDays <= 1) { c.age01++; } else if (b.ageDays <= 3) { c.age23++; } else { c.age4++; }
   });
-  return { batches: batches, counts: c, holidays: hol, serverNow: now };
+  var imp = rows_('ImportLog');
+  var lastImport = imp.length ? strip_(imp[imp.length - 1]) : null;
+  if (lastImport) { lastImport.details = parseJson_(lastImport.details, {}); }
+  if (user.role === 'PRD' || user.role === 'QC') { lastImport = null; }
+  return { batches: batches, counts: c, holidays: hol, serverNow: now, lastImport: lastImport };
 }
 
 function apiGetBatch_(user, p) {
@@ -532,6 +551,8 @@ function registerOne_(user, p) {
   var profile = rows_('CustomerProfiles').filter(function (x) { return x.key === profileKey; })[0];
   var chosen = p.masterDocIds || {};
   var md = {};
+  var matchSource = profile ? 'remembered' : 'auto';
+  if (p.masterDocIds) { matchSource = 'chosen'; }
   ['BMR', 'STP', 'SPEC', 'COA'].forEach(function (k) {
     var id = chosen[k] !== undefined ? chosen[k] : (profile ? profile[{ BMR: 'bmrId', STP: 'stpId', SPEC: 'specId', COA: 'coaId' }[k]] : '');
     if (id === undefined || id === null) { id = ''; }
@@ -579,7 +600,7 @@ function registerOne_(user, p) {
         fmtDate_(ymdToMs_(b.dispatchDate, 12)) + '. Please upload the scanned <b>' + DOC_TYPES[t].label +
         '</b> before the deadline.' + (refs ? '<div style="margin-top:8px">' + refs + '</div>' : ''), docFacts_(b, d, now)));
   });
-  return { id: b.id, dueAt: iso_(due), masterDocs: md, batchSize: f.batchSize, product: f.product };
+  return { id: b.id, dueAt: iso_(due), masterDocs: md, batchSize: f.batchSize, product: f.product, matchSource: matchSource };
 }
 
 function masterSummary_(md) {
@@ -1268,6 +1289,254 @@ function runReminders() {
 }
 
 // ---------------------------------------------------------------------------
+// Daily Production & Dispatch Register (Google Sheet filled by Production)
+// ---------------------------------------------------------------------------
+
+var REGISTER_COLUMNS = ['Mfg Date', 'Batch No.', 'Product', 'Batch Size', 'Customer', 'Dispatch Date',
+  'Invoice / Challan No.', 'Market', 'Site', 'Remarks', 'BDVS Status'];
+
+// Header text -> field. Matching is case/space-insensitive so Production can rename or reorder columns.
+var REGISTER_HEADER_MAP = [
+  [/^(mfg|manufactur\w*)\s*(date|dt)?$|^date\s*of\s*m(fg|anufactur\w*)$/, 'mfgDate'],
+  [/^batch\s*(no|number|#)?\.?$/, 'batchNo'],
+  [/^product(\s*name)?$/, 'product'],
+  [/^(batch\s*)?(size|qty|quantity)(\s*\(?kgs?\)?)?$/, 'batchSize'],
+  [/^(customer|party|company|consignee)(\s*name)?$/, 'customer'],
+  [/^(dispatch|despatch)\s*(date|dt)?$|^date\s*of\s*(dispatch|despatch)$/, 'dispatchDate'],
+  [/^(invoice|challan|inv)(\s*\/\s*challan)?\s*(no|number)?\.?$/, 'invoiceNo'],
+  [/^market$/, 'market'],
+  [/^(site|plant|unit)$/, 'site'],
+  [/^remarks?$/, 'remarks'],
+  [/^bdvs\s*status$/, 'status']
+];
+
+function apiCreateProductionSheet_(user, p) {
+  var existing = setting_('PRODUCTION_SHEET_ID');
+  if (existing && !p.force) { throw new Error('A production register is already linked. Clear PRODUCTION_SHEET_ID first if you want a new one.'); }
+  var nss = SpreadsheetApp.create('Daily Production & Dispatch Register (BDVS)');
+  var sh = nss.getSheets()[0];
+  sh.setName('Register');
+  sh.getRange(1, 1, 1, REGISTER_COLUMNS.length).setValues([REGISTER_COLUMNS]).setFontWeight('bold').setBackground('#dbeafe');
+  sh.setFrozenRows(1);
+  sh.getRange('A2:A').setNumberFormat('dd.MM.yyyy');
+  sh.getRange('F2:F').setNumberFormat('dd.MM.yyyy');
+  sh.getRange('B2:B').setNumberFormat('@');
+  sh.getRange('C2:C').setDataValidation(SpreadsheetApp.newDataValidation()
+    .requireValueInList([PRODUCTS.ALP, PRODUCTS.MGP], true).setAllowInvalid(true).build());
+  sh.getRange('H2:H').setDataValidation(SpreadsheetApp.newDataValidation().requireValueInList(['Domestic', 'Export'], true).build());
+  sh.getRange('I2:I').setDataValidation(SpreadsheetApp.newDataValidation()
+    .requireValueInList(['Pharchem Pvt. Ltd.', 'Enicar Pharmaceuticals Pvt. Ltd.'], true).build());
+  sh.getRange('A2:A').setDataValidation(SpreadsheetApp.newDataValidation().requireDate().setAllowInvalid(false).build());
+  sh.getRange('F2:F').setDataValidation(SpreadsheetApp.newDataValidation().requireDate().setAllowInvalid(false).build());
+  sh.getRange('K2:K').setBackground('#f1f5f9');
+  sh.protect().setDescription('Columns are used by BDVS').setWarningOnly(true);
+  var help = nss.insertSheet('How to fill');
+  help.getRange(1, 1, 12, 1).setValues([
+    ['DAILY PRODUCTION & DISPATCH REGISTER - read by BDVS every evening at ' + setting_('IMPORT_HOUR') + ':00 IST'],
+    ['1. Every evening add one row per batch manufactured today: Mfg Date, Batch No., Product, Batch Size, Customer.'],
+    ['2. If there was no production today, add one row with Mfg Date = today and Batch No. = NIL.'],
+    ['3. When the batch is dispatched, fill Dispatch Date and Invoice / Challan No. on the same row (do not add a new row).'],
+    ['4. BDVS registers the batch on the evening the Dispatch Date is filled; PRD and QC then have 2 days from dispatch to upload the scans.'],
+    ['5. Batch No. must start with ALP/ or MGP/ (e.g. ALP/214(26-27)); Product and Batch Size are taken from the BMR if left blank.'],
+    ['6. Customer: use the same name every time (e.g. Dynemic Products Ltd) so BDVS finds the right BMR, STP and COA format.'],
+    ['7. Market and Site are optional (default: Domestic / Pharchem Pvt. Ltd.).'],
+    ['8. Do not edit the BDVS Status column - BDVS writes the result there (Registered / Awaiting dispatch / ERROR ...).'],
+    ['9. If a row shows ERROR, correct it; BDVS retries the next evening (or QA can press "Read now").'],
+    ['10. Never delete rows that BDVS has registered. To correct a registered batch, inform QA.'],
+    ['Partial consignments: enter the FIRST dispatch date.']
+  ]);
+  help.setColumnWidth(1, 900);
+  var id = nss.getId();
+  try {
+    var f = DriveApp.getFileById(id);
+    splitEmails_(setting_('EMAIL_PRD')).forEach(function (e) { f.addEditor(e); });
+    splitEmails_(setting_('EMAIL_QC')).concat(splitEmails_(setting_('EMAIL_QA'))).forEach(function (e) { f.addViewer(e); });
+  } catch (e) { /* sharing is optional */ }
+  setSetting_('PRODUCTION_SHEET_ID', id);
+  audit_(user, 'PRODUCTION_REGISTER_CREATED', 'Setting', 'PRODUCTION_SHEET_ID', '', existing, id, '', p.client);
+  return { id: id, url: nss.getUrl() };
+}
+
+function apiLinkProductionSheet_(user, p) {
+  var id = sheetIdFrom_(p.sheet);
+  if (!id) { throw new Error('Paste the link of the production register Google Sheet.'); }
+  var name;
+  try { name = SpreadsheetApp.openById(id).getName(); } catch (e) {
+    throw new Error('Cannot open that sheet. Share it with the Google account that deployed BDVS (and make sure it is a Google Sheet, not an .xlsx file).');
+  }
+  var old = setting_('PRODUCTION_SHEET_ID');
+  setSetting_('PRODUCTION_SHEET_ID', id);
+  audit_(user, 'CONFIG_CHANGED', 'Setting', 'PRODUCTION_SHEET_ID', '', old, id + ' (' + name + ')', 'Production register linked', p.client);
+  return { id: id, name: name };
+}
+
+function sheetIdFrom_(v) {
+  v = String(v || '').trim();
+  var m = v.match(/\/d\/([A-Za-z0-9_-]+)/);
+  return m ? m[1] : v;
+}
+
+function cellYmd_(v) {
+  if (isDate_(v)) { return istYmd_(v.getTime()); }
+  if (v === '' || v == null) { return ''; }
+  if (typeof v === 'number') { return istYmd_(Date.UTC(1899, 11, 30) - IST_OFF + v * DAY + 12 * HOUR); } // serial date
+  return normDate_(String(v));
+}
+
+/** Trigger entry point (daily). */
+function runDailyImport() {
+  cacheReset_();
+  if (!setting_('PRODUCTION_SHEET_ID')) { return; }
+  var lock = LockService.getScriptLock();
+  if (!lock.tryLock(120000)) { return; }
+  try { importProductionRegister_(null, 'daily timer'); } finally { lock.releaseLock(); }
+}
+
+/**
+ * Reads the production register. Rows with a dispatch date are registered (auto-matched to the GMP
+ * master documents); rows without one are reported as awaiting dispatch; problems are written back to the
+ * row and emailed to QA and Production.
+ */
+function importProductionRegister_(user, client) {
+  var id = sheetIdFrom_(setting_('PRODUCTION_SHEET_ID'));
+  if (!id) { throw new Error('Link the Daily Production & Dispatch Register first (Settings).'); }
+  var actor = user || { id: 'SYSTEM', name: 'Daily import (production register)', role: 'SYSTEM' };
+  var book;
+  try { book = SpreadsheetApp.openById(id); } catch (e) {
+    throw new Error('Cannot open the production register. Share it with the Google account that deployed BDVS.');
+  }
+  var sh = book.getSheetByName('Register') || book.getSheets()[0];
+  var last = sh.getLastRow(), lastCol = sh.getLastColumn();
+  if (last < 1) { throw new Error('The production register is empty (no header row).'); }
+  var data = sh.getRange(1, 1, last, lastCol).getValues();
+  var head = data[0].map(function (h) { return String(h).trim().toLowerCase().replace(/\s+/g, ' ').replace(/[:*]/g, ''); });
+  var col = {};
+  head.forEach(function (h, i) {
+    REGISTER_HEADER_MAP.forEach(function (m) { if (col[m[1]] === undefined && m[0].test(h)) { col[m[1]] = i; } });
+  });
+  if (col.batchNo === undefined || col.dispatchDate === undefined || col.customer === undefined) {
+    throw new Error('The production register needs columns "Batch No.", "Customer" and "Dispatch Date" in row 1.');
+  }
+  var get = function (row, k) { return col[k] === undefined ? '' : row[col[k]]; };
+  var now = Date.now();
+  var res = { rowsRead: 0, registered: [], awaiting: [], already: 0, errors: [], days: {} };
+  var statusWrites = [];
+  var batches = rows_('Batches');
+
+  for (var r = 1; r < data.length; r++) {
+    var row = data[r];
+    var batchNo = String(get(row, 'batchNo') || '').trim();
+    var mfgRaw = get(row, 'mfgDate');
+    var mfg = '';
+    try { mfg = cellYmd_(mfgRaw); } catch (e) { mfg = ''; }
+    if (mfg) { res.days[mfg] = true; }
+    if (!batchNo || /^nil$/i.test(batchNo)) { continue; }
+    res.rowsRead++;
+    var oldStatus = String(get(row, 'status') || '');
+    var status = '';
+    var code = productCodeOf_(get(row, 'product'), batchNo);
+    var productName = String(get(row, 'product') || '').trim() || PRODUCTS[code] || '';
+    var dup = batches.filter(function (b) { return norm_(b.batchNo) === norm_(batchNo) && (!productName || norm_(b.product) === norm_(productName)); })[0];
+    if (dup) {
+      res.already++;
+      if (!/^Registered/.test(oldStatus)) { status = 'Registered ' + fmtDate_(new Date(dup.registeredAt).getTime()); }
+    } else {
+      var disp = '';
+      var rawDisp = get(row, 'dispatchDate');
+      try { disp = cellYmd_(rawDisp); } catch (e) { status = 'ERROR: dispatch date "' + rawDisp + '" not understood (use DD.MM.YYYY)'; }
+      if (!status && !disp) {
+        res.awaiting.push({ row: r + 1, batchNo: batchNo, customer: String(get(row, 'customer')), mfgDate: mfg });
+        status = 'Awaiting dispatch (manufactured' + (mfg ? ' ' + fmtDate_(ymdToMs_(mfg, 12)) : '') + ')';
+      } else if (!status) {
+        try {
+          var out = registerOne_(actor, { batchNo: batchNo, product: get(row, 'product'), batchSize: String(get(row, 'batchSize') || ''),
+            dispatchDate: disp, customer: String(get(row, 'customer') || ''), invoiceNo: String(get(row, 'invoiceNo') || ''),
+            market: String(get(row, 'market') || ''), site: String(get(row, 'site') || ''),
+            remarks: ['From production register row ' + (r + 1), mfg ? 'Mfg ' + fmtDate_(ymdToMs_(mfg, 12)) : '', String(get(row, 'remarks') || '')].filter(String).join('; '),
+            client: client || 'daily import', fromBulk: true });
+          batches = rows_('Batches');
+          res.registered.push({ row: r + 1, batchNo: batchNo, customer: String(get(row, 'customer')), dueAt: out.dueAt,
+            matchSource: out.matchSource, docs: masterSummary_(out.masterDocs) });
+          status = 'Registered ' + fmtDate_(now) + ' - upload due ' + fmt_(new Date(out.dueAt).getTime());
+        } catch (e) {
+          status = 'ERROR: ' + String(e.message || e);
+        }
+      }
+    }
+    if (/^ERROR/.test(status)) { res.errors.push({ row: r + 1, batchNo: batchNo, error: status.replace(/^ERROR: /, '') }); }
+    if (status && status !== oldStatus && col.status !== undefined) { statusWrites.push([r + 1, status]); }
+  }
+  // Write results back to the register so Production can see them (needs edit access; optional).
+  try { statusWrites.forEach(function (w) { sh.getRange(w[0], col.status + 1).setValue(w[1]); }); } catch (e) { /* read-only */ }
+
+  // Was the register filled for the last working day?
+  var missingDay = '';
+  if (setting_('REGISTER_MISSING_ALERT') !== 'NO') {
+    var hol = holidayMap_();
+    var today = istYmd_(now);
+    if (isWorkingDay_(today, hol) && !res.days[today] && !user) { missingDay = today; }
+  }
+
+  var log = { id: newId_('IM'), runAt: iso_(now), by: actor.name, rowsRead: String(res.rowsRead), registered: String(res.registered.length),
+    awaitingDispatch: String(res.awaiting.length), alreadyRegistered: String(res.already), errors: String(res.errors.length),
+    details: JSON.stringify({ registered: res.registered, awaiting: res.awaiting, errors: res.errors, missingDay: missingDay }) };
+  insert_('ImportLog', log);
+  audit_(user, 'PRODUCTION_REGISTER_READ', 'ImportLog', log.id, '', '', res.registered.length + ' registered, ' + res.awaiting.length +
+    ' awaiting dispatch, ' + res.errors.length + ' errors' + (missingDay ? ', no entry for ' + missingDay : ''), '', client);
+
+  // Summary email to QA (and Production when there is something for them to fix).
+  if (res.registered.length || res.errors.length || missingDay) {
+    var html = '';
+    if (res.registered.length) {
+      html += '<h3 style="margin:12px 0 6px">Registered (' + res.registered.length + ') - PRD and QC have been notified</h3><table border="1" cellpadding="5" style="border-collapse:collapse;font-size:13px"><tr><th>Batch</th><th>Customer</th><th>Upload due</th><th>Master documents</th></tr>' +
+        res.registered.map(function (x) {
+          return '<tr><td>' + esc_(x.batchNo) + '</td><td>' + esc_(x.customer) + '</td><td>' + fmt_(new Date(x.dueAt).getTime()) + '</td><td>' + esc_(x.docs) +
+            (x.matchSource === 'remembered' ? '' : ' <b style="color:#b45309">(new customer - auto-matched, please check)</b>') + '</td></tr>';
+        }).join('') + '</table>';
+    }
+    if (res.errors.length) {
+      html += '<h3 style="margin:12px 0 6px;color:#b91c1c">Rows with problems (' + res.errors.length + ') - correct them in the register</h3><table border="1" cellpadding="5" style="border-collapse:collapse;font-size:13px"><tr><th>Row</th><th>Batch</th><th>Problem</th></tr>' +
+        res.errors.map(function (x) { return '<tr><td>' + x.row + '</td><td>' + esc_(x.batchNo) + '</td><td>' + esc_(x.error) + '</td></tr>'; }).join('') + '</table>';
+    }
+    if (missingDay) {
+      html += '<p style="color:#b91c1c"><b>No entry was made in the production register for ' + fmtDate_(ymdToMs_(missingDay, 12)) + '.</b> Add today\'s batches, or a NIL row if there was no production.</p>';
+    }
+    html += '<p>Manufactured and awaiting dispatch: <b>' + res.awaiting.length + '</b> batch(es).</p>';
+    var to = deptEmails_('QA');
+    var cc = (res.errors.length || missingDay) ? deptEmails_('PRD') : [];
+    sendMail_('IMPORT|' + log.id, 'DAILY_IMPORT', '', '', to, cc,
+      'Daily production register: ' + res.registered.length + ' registered' + (res.errors.length ? ', ' + res.errors.length + ' problem(s)' : '') + (missingDay ? ', register not filled' : ''),
+      mailBody_('Daily production register - ' + fmtDate_(now), 'Result of reading the Daily Production &amp; Dispatch Register.' + html, ''));
+  }
+  return { rowsRead: res.rowsRead, registered: res.registered, awaiting: res.awaiting, already: res.already, errors: res.errors, missingDay: missingDay };
+}
+
+/** QA can correct the master documents of an open batch (reason required). */
+function apiUpdateMasterDocs_(user, p) {
+  var b = findById_('Batches', p.batchId);
+  if (!b) { throw new Error('Batch not found.'); }
+  if (b.status === 'CLOSED') { throw new Error('Batch is closed.'); }
+  var reason = req_(p.reason, 'Reason for change');
+  var md = {};
+  ['BMR', 'STP', 'SPEC', 'COA'].forEach(function (k) {
+    var doc = p.ids && p.ids[k] ? findById_('DocMaster', p.ids[k]) : null;
+    md[k] = doc ? { id: doc.id, number: doc.number, title: doc.title, url: doc.url } : null;
+  });
+  var old = masterSummary_(parseJson_(b.masterDocs, {}));
+  b.masterDocs = JSON.stringify(md);
+  update_('Batches', b);
+  var key = b.productCode + '|' + customerKey_(b.customer);
+  var prof = rows_('CustomerProfiles').filter(function (x) { return x.key === key; })[0];
+  if (prof && p.remember !== false) {
+    prof.bmrId = md.BMR ? md.BMR.id : ''; prof.stpId = md.STP ? md.STP.id : ''; prof.specId = md.SPEC ? md.SPEC.id : ''; prof.coaId = md.COA ? md.COA.id : '';
+    prof.updatedAt = iso_(Date.now()); prof.updatedBy = user.name;
+    update_('CustomerProfiles', prof);
+  }
+  audit_(user, 'MASTER_DOCS_CHANGED', 'Batch', b.id, b.batchNo, old, masterSummary_(md), reason, p.client);
+  return md;
+}
+
+// ---------------------------------------------------------------------------
 // Views / status
 // ---------------------------------------------------------------------------
 
@@ -1672,7 +1941,7 @@ function rows_(name) {
     var vals = last > 1 ? s.getRange(2, 1, last - 1, h.length).getValues() : [];
     CACHE_['r_' + name] = vals.map(function (row, i) {
       var o = { _row: i + 2 };
-      h.forEach(function (k, j) { o[k] = row[j] instanceof Date ? iso_(row[j].getTime()) : String(row[j]); });
+      h.forEach(function (k, j) { o[k] = isDate_(row[j]) ? iso_(row[j].getTime()) : String(row[j]); });
       return o;
     });
   }
@@ -1763,6 +2032,7 @@ function sha256Hex_(input) {
   return digest.map(function (b) { return ((b & 255) + 256).toString(16).slice(1); }).join('');
 }
 
+function isDate_(v) { return Object.prototype.toString.call(v) === '[object Date]' && !isNaN(v.getTime()); }
 function newId_(prefix) { return prefix + '-' + Utilities.getUuid().replace(/-/g, '').slice(0, 12).toUpperCase(); }
 function req_(v, label) { v = String(v == null ? '' : v).trim(); if (!v) { throw new Error(label + ' is required.'); } return v; }
 function norm_(s) { return String(s || '').trim().toLowerCase(); }

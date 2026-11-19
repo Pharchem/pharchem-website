@@ -329,6 +329,9 @@ function viewDashboard(v) {
       t(c.closed, 'Batches closed', '', 'CLOSED') +
       t(overdueTotal, 'Overdue (upload ' + c.overdueUpload + ' / verify ' + c.overdueVerify + ' / hardcopy ' + c.overdueHardcopy + ')', overdueTotal ? 'red' : 'grn', 'OVERDUE') +
       '</div>' +
+      (d.lastImport ? '<div class="card small" style="padding:10px 14px">Production register last read ' + fDT(d.lastImport.runAt) + ': <b>' + d.lastImport.registered + '</b> registered &middot; ' +
+        '<a href="#" onclick="showAwaiting();return false"><b>' + (d.lastImport.details.awaiting || []).length + '</b> manufactured, awaiting dispatch</a>' +
+        (Number(d.lastImport.errors) ? ' &middot; <b style="color:var(--bad)">' + d.lastImport.errors + ' row(s) with problems</b>' : '') + (d.lastImport.details.missingDay ? ' &middot; <b style="color:var(--bad)">register not filled for ' + fYmd(d.lastImport.details.missingDay) + '</b>' : '') + '</div>' : '') +
       (role() === 'QA' || role() === 'ADMIN' ? '<div class="card small" style="padding:10px 14px">Open batches by days since dispatch: <b>0-1 days: ' + c.age01 + '</b> &nbsp;|&nbsp; <b>2-3 days: ' + c.age23 + '</b> &nbsp;|&nbsp; <b style="color:' + (c.age4 ? 'var(--bad)' : 'inherit') + '">&gt;3 days: ' + c.age4 + '</b></div>' : '') +
       '<div class="row" style="margin-bottom:10px"><input type="text" id="dq" placeholder="Search batch, product, customer, invoice..." style="max-width:340px" oninput="drawDash()">' +
       '<select id="df" style="max-width:260px" onchange="drawDash()"><option value="">All open batches</option><option value="ALL">All batches incl. closed</option>' +
@@ -338,6 +341,12 @@ function viewDashboard(v) {
       '<div class="tw" id="dt"></div>';
     drawDash();
   });
+}
+function showAwaiting() {
+  var li = S.dash.lastImport, a = li.details.awaiting || [], er = li.details.errors || [];
+  openModal(mh('From the production register (read ' + fDT(li.runAt) + ')') +
+    '<h3>Manufactured, awaiting dispatch (' + a.length + ')</h3>' + (a.length ? '<table><thead><tr><th>Row</th><th>Batch</th><th>Customer</th><th>Mfg date</th></tr></thead><tbody>' + a.map(function (x) { return '<tr><td>' + x.row + '</td><td>' + esc(x.batchNo) + '</td><td>' + esc(x.customer) + '</td><td>' + (x.mfgDate ? fYmd(x.mfgDate) : '-') + '</td></tr>'; }).join('') + '</tbody></table>' : '<p class="muted">None.</p>') +
+    '<h3>Rows with problems (' + er.length + ')</h3>' + (er.length ? '<table><tbody>' + er.map(function (x) { return '<tr><td>Row ' + x.row + '</td><td>' + esc(x.batchNo) + '</td><td style="color:var(--bad)">' + esc(x.error) + '</td></tr>'; }).join('') + '</tbody></table>' : '<p class="muted">None.</p>'));
 }
 function dashFilter(f) { var s = $('df'); if (s) { s.value = f; drawDash(); } }
 function filteredBatches() {
@@ -577,7 +586,8 @@ function openBatch(batchId) {
     var html = '<div class="facts">' + [['Batch size', b.batchSize], ['Site', b.site], ['Customer', b.customer], ['Market', b.market], ['Invoice / challan', b.invoiceNo],
       ['Dispatch date', fYmd(b.dispatchDate)], ['Registered', fDT(b.registeredAt) + ' by ' + b.registeredBy]].map(function (f) { return '<div><b>' + f[0] + '</b>' + esc(f[1]) + '</div>'; }).join('') +
       (b.closedAt ? '<div><b>Batch data verification completed</b>' + fDT(b.closedAt) + ' by ' + esc(b.closedBy) + '</div>' : '') + '</div>' +
-      (b.remarks ? '<p class="small">Remarks: ' + esc(b.remarks) + '</p>' : '') + masterDocsHtml(b.masterDocs);
+      (b.remarks ? '<p class="small">Remarks: ' + esc(b.remarks) + '</p>' : '') + masterDocsHtml(b.masterDocs) +
+      (isQA() && b.status !== 'CLOSED' ? '<div style="margin:-6px 0 12px"><button class="btn sm sec" onclick="changeMaster()">Change master documents</button></div>' : '');
     if (b.status === 'READY_TO_CLOSE' && isQA()) {
       html += '<div class="okmsg">Both documents are verified and both hardcopies are received. <button class="btn ok sm" onclick="closeBatchDlg(\'' + b.id + '\',\'' + esc(b.batchNo) + '\')">Complete Batch Data Verification</button></div>';
     }
@@ -593,6 +603,22 @@ function openBatch(batchId) {
     $('bd').innerHTML = html;
     S.batch = b;
   }).catch(function (e) { $('bd').innerHTML = '<div class="err">' + esc(e.message) + '</div>'; });
+}
+function changeMaster() {
+  var b = S.batch, code = b.productCode;
+  loadMaster().then(function () {
+    var md = b.masterDocs || {};
+    var bg = openModal(mh('Master documents - ' + esc(b.batchNo)) + '<div class="grid2">' + KINDS.map(function (k) {
+      return '<div><label class="f">' + k[1] + '</label><select id="cm_' + k[0] + '">' + masterOptions(code, k[0], md[k[0]] ? md[k[0]].id : '') + '</select></div>';
+    }).join('') + '</div><label style="display:block;margin-top:8px"><input type="checkbox" id="cm_rem" checked> Remember for future batches of ' + esc(b.customer) + '</label>' +
+      '<label class="f" style="margin-top:8px">Reason for change</label><input type="text" id="cm_r"><div id="cm_err"></div><div class="row" style="justify-content:flex-end;margin-top:10px"><button class="btn" id="cm_b">Save</button></div>');
+    $('cm_b').onclick = function () {
+      var ids = {}; KINDS.forEach(function (k) { ids[k[0]] = $('cm_' + k[0]).value; });
+      call('updateMasterDocs', { batchId: b.id, ids: ids, reason: $('cm_r').value, remember: $('cm_rem').checked }).then(function () {
+        bg.remove(); closeModal(); openBatch(b.id); toast('Master documents updated.');
+      }).catch(function (e) { showErr('cm_err', e); });
+    };
+  });
 }
 function docCard(b, d) {
   var vs = b.versions.filter(function (v) { return v.docId === d.id; }).sort(function (x, y) { return y.versionNo - x.versionNo; });
@@ -1073,6 +1099,9 @@ function viewSettings(v) {
           (admin ? '<td><button class="btn sm" onclick="saveSetting(\'' + r.key + '\',\'st' + i + '\',this)">Save</button></td>' : '') + '</tr>';
       }).join('') + '</tbody></table></div>' +
       (admin ? '<div class="row" style="margin-top:10px"><button class="btn sm sec" id="tst">Send test email to departments</button><span class="small">Emails left today (Google quota): ' + (s.remainingEmailQuota == null ? '?' : s.remainingEmailQuota) + '</span></div>' : '') + '</div>' +
+      '<div class="card"><h3 style="margin-top:0">Daily Production &amp; Dispatch Register</h3><p class="small">Production adds one row per batch every evening (Mfg Date, Batch No., Customer...) and fills <b>Dispatch Date</b> and <b>Invoice / Challan No.</b> when the batch leaves. BDVS reads the sheet every evening, registers dispatched batches automatically, writes the result in the <b>BDVS Status</b> column and emails QA a summary.</p>' +
+      '<div class="row"><input type="text" id="psl" placeholder="Link of the Google Sheet" value="' + esc((s.settings.filter(function (x) { return x.key === 'PRODUCTION_SHEET_ID'; })[0] || {}).value ? 'https://docs.google.com/spreadsheets/d/' + (s.settings.filter(function (x) { return x.key === 'PRODUCTION_SHEET_ID'; })[0] || {}).value + '/edit' : '') + '" style="max-width:460px">' +
+      '<button class="btn sm sec" id="psb">Link sheet</button><button class="btn sm sec" id="psc">Create template sheet</button><button class="btn sm" id="psr">Read now</button></div><div id="psm" class="small" style="margin-top:6px"></div><div id="psl2" style="margin-top:8px"></div></div>' +
       '<div class="card"><h3 style="margin-top:0">GMP document master</h3><p class="small">BDVS reads the GMP folder (skipping Draft / Obsolete folders) and indexes every BMR, STP, specification (SPE) and COA format (PCF-FMR) by product and customer, so batches are auto-filled at registration. Re-scan after you add or revise documents in the folder.</p>' +
       '<div class="row"><input type="text" id="gmpf" placeholder="GMP folder link or ID" value="' + esc((s.settings.filter(function (x) { return x.key === 'GMP_FOLDER_ID'; })[0] || {}).value || '') + '" style="max-width:420px"><button class="btn sm" id="gmpb">Scan GMP folder</button><span id="gmpr" class="small"></span></div>' +
       '<div id="gmpl" style="margin-top:8px"></div></div>' +
@@ -1097,8 +1126,24 @@ function viewSettings(v) {
       }).catch(function (e) { busy(b, false); $('gmpr').innerHTML = '<span style="color:var(--bad)">' + esc(e.message) + '</span>'; });
     };
     drawMasterList();
+    $('psb').onclick = function () { var b = this; busy(b, true); call('linkProductionSheet', { sheet: $('psl').value }).then(function (r) { busy(b, false); $('psm').innerHTML = '<span style="color:var(--ok)">Linked: ' + esc(r.name) + '</span>'; }).catch(function (e) { busy(b, false); $('psm').innerHTML = '<span style="color:var(--bad)">' + esc(e.message) + '</span>'; }); };
+    $('psc').onclick = function () { var b = this; busy(b, true); call('createProductionSheet', {}).then(function (r) { busy(b, false); $('psl').value = r.url; $('psm').innerHTML = 'Created and linked. <a href="' + esc(r.url) + '" target="_blank" rel="noopener">Open the register</a> - it is shared with the Production mailbox (edit) and QC / QA (view).'; }).catch(function (e) { busy(b, false); $('psm').innerHTML = '<span style="color:var(--bad)">' + esc(e.message) + '</span>'; }); };
+    $('psr').onclick = function () { var b = this; busy(b, true, 'Reading'); call('importProduction', {}).then(function (r) { busy(b, false); $('psm').innerHTML = importSummary(r); drawImportLog(); loadDash(); }).catch(function (e) { busy(b, false); $('psm').innerHTML = '<span style="color:var(--bad)">' + esc(e.message) + '</span>'; }); };
+    drawImportLog();
     $('hb').onclick = function () { call('addHoliday', { date: $('hd').value, name: $('hn').value }).then(function () { toast('Holiday added.'); go('settings'); }).catch(function (e) { toast(e.message); }); };
   });
+}
+function importSummary(r) {
+  return '<b>' + r.registered.length + ' registered</b>, ' + r.awaiting.length + ' awaiting dispatch, ' + r.already + ' already registered' +
+    (r.errors.length ? ', <b style="color:var(--bad)">' + r.errors.length + ' with problems</b>: ' + r.errors.map(function (e) { return 'row ' + e.row + ' ' + esc(e.batchNo) + ' - ' + esc(e.error); }).join('; ') : '') +
+    (r.registered.some(function (x) { return x.matchSource !== 'remembered'; }) ? '<br><span style="color:var(--warn)">New customers were auto-matched to master documents - check them in the batch (Change master documents).</span>' : '');
+}
+function drawImportLog() {
+  call('importLog').then(function (log) {
+    $('psl2').innerHTML = log.length ? '<details><summary>Last reads (' + log.length + ')</summary><table><thead><tr><th>Read at</th><th>By</th><th>Registered</th><th>Awaiting dispatch</th><th>Problems</th></tr></thead><tbody>' + log.map(function (l) {
+      return '<tr class="small"><td>' + fDT(l.runAt) + '</td><td>' + esc(l.by) + '</td><td>' + l.registered + '</td><td>' + l.awaitingDispatch + '</td><td>' + (Number(l.errors) ? '<b style="color:var(--bad)">' + l.errors + '</b> ' + (l.details.errors || []).map(function (e) { return 'row ' + e.row + ': ' + esc(e.error); }).join('; ') : '0') + (l.details.missingDay ? ' <b style="color:var(--bad)">register not filled</b>' : '') + '</td></tr>';
+    }).join('') + '</tbody></table></details>' : '<p class="muted small">Not read yet.</p>';
+  }).catch(function () {});
 }
 function drawMasterList() {
   loadMaster().then(function (m) {

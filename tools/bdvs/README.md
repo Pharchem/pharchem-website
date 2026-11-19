@@ -40,18 +40,24 @@ Do this signed in to the **QA Google account** that will own the data (e.g. the 
    - Click **Send test email to departments** and check that all mailboxes received it.
 7. **Create users** (Users tab). One login per person, with role PRD, QC, QA or ADMIN. Hand over the temporary passwords personally.
 8. **Log in as a QA user** → Settings → **GMP document master** → paste the GMP folder link → **Scan GMP folder**.
+9. **Production register:** Settings → **Daily Production & Dispatch Register** → **Create template sheet**. It is created in Drive, linked, and shared (edit) with the Production mailbox. Alternatively, paste the link of your own Google Sheet → **Link sheet**; it needs the column headers *Batch No.*, *Customer* and *Dispatch Date*.
    Add declared **holidays** in the same screen. Review the **verification checklists** (pre-loaded from QAGE/033, 043, 047, 054 and the BMR/COA formats).
 
 ## Daily use
 
 | Who | What |
 |---|---|
-| **QA** | *Register dispatch* → **Bulk: paste list from Production** (Batch No. · Dispatch date · Customer · Invoice). The product, BMR, STP, specification, COA format and batch size are filled in from the GMP folder. Check the preview → Register. |
+| **Production (every evening)** | In the *Daily Production & Dispatch Register* Google Sheet, add one row per batch made today (Mfg Date, Batch No., Customer; Product and Batch Size are optional). Add a **NIL** row on days with no production. When a batch is dispatched, fill **Dispatch Date** and **Invoice / Challan No.** on the same row. |
+| **BDVS (8 PM daily, automatic)** | Reads the register and **registers every newly dispatched batch**, filling in the BMR, STP, specification, COA format and batch size from the GMP folder. PRD and QC are emailed. The result is written in the *BDVS Status* column (Registered / Awaiting dispatch / ERROR). QA gets a summary email that flags new customers to check; Production is copied when rows have problems or nothing was entered for the day. |
+| **QA** | Check the evening summary; correct a new customer's documents in the batch (**Change master documents**, remembered for next time). QA can also register by hand: *Register dispatch* → single batch or **Bulk: paste list from Production** (Batch No. · Dispatch date · Customer · Invoice). The product, BMR, STP, specification, COA format and batch size are filled in from the GMP folder. Check the preview → Register. |
 | **PRD / QC** | *My tasks* → **Upload scan** (PDF, or JPG/PNG pages combined automatically) → enter the page count → tick the checklist. If a scan is rejected, read the observations and **Re-upload**. After Verified OK, **print the transmittal slip** and hand over the original. |
 | **QA** | *Verification queue* → **Verify**: the scan opens beside the checklist and the master documents. Accept, or reject with observations, using your password as the signature. *Hardcopy receipt* → **Record receipt** (page count and storage location). Open the batch → **Complete Batch Data Verification**. |
 | **Admin** | Users, settings, test email. The admin role cannot verify or close batches (segregation of duties). |
 
 When the GMP folder changes (a new or revised BMR, STP or COA format), go to Settings → **Scan GMP folder** again.
+**Read now** (Settings) reads the production register immediately; re-reading never registers a batch twice.
+
+The register must be a **Google Sheet**, not an uploaded .xlsx. If Production works in Excel, open the file in Drive → *File → Save as Google Sheets*, and keep using that copy.
 
 ## Data integrity notes
 
@@ -65,4 +71,4 @@ When the GMP folder changes (a new or revised BMR, STP or COA format), go to Set
 
 ## Validation (CSV)
 
-Before GMP use, run IQ/OQ/PQ (or UAT) against URS-BDVS-001 §14. The deadline maths, reminders, versioning, audit trail, access control and closure rules are already covered by an automated test (59 checks) run during development. Repeat them as documented OQ test cases on your deployment.
+Before GMP use, run IQ/OQ/PQ (or UAT) against URS-BDVS-001 §14. The deadline maths, reminders, versioning, audit trail, access control and closure rules are already covered by an automated test (74 checks) run during development. Repeat them as documented OQ test cases on your deployment.
