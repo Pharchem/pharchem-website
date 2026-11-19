@@ -45,16 +45,17 @@ Do this signed in to the **QA Google account** that will own the data (e.g. the 
 9. **Production register:** Settings → **Daily Production & Dispatch Register** → **Create template sheet**. It is created in Drive, linked, and shared (edit) with the Production mailbox. Alternatively, paste the link of your own Google Sheet → **Link sheet**; it needs the column headers *Batch No.*, *Customer* and *Dispatch Date*.
    Add declared **holidays** in the same screen. Review the **verification checklists** (pre-loaded from QAGE/033, 043, 047, 054 and the BMR/COA formats).
 
-10. **Automatic checks (Claude):**
-    - Create an API key at console.anthropic.com (Settings → API keys). Add a payment method and set a monthly spend limit there.
+10. **Limits (one time):**
+    - Create an API key at console.anthropic.com (Settings → API keys), add a payment method and set a low monthly spend limit (e.g. ₹500).
     - As admin: Settings → *Automatic checks* → paste the key → **Save API key** (or use the sheet menu *BDVS → Set Claude API key*). The key is kept in Script Properties, never in the sheet.
-    - As QA: **Read limits from GMP documents**. Within about an hour every master BMR, specification and COA format has a draft list of limits. Open each one, check it against the document, edit where needed, then **Approve** (password signature). Only approved limits are used.
+    - As QA: **Read limits from GMP documents**. Within about an hour every master BMR, specification and COA format has a draft list of limits (one-time cost: about ₹50–150 in total). Check each list against its document, edit where needed, then **Approve** (password signature). Only approved limits are used.
+    - The API key can then be removed (Save an empty key). Limits can also be typed in by QA instead.
     - Fill `EMAIL_QA_HEAD` in Settings; this person is emailed immediately when a value is out of limit.
 
 ## Automatic checks: how they work
 
-1. When PRD or QC upload a scan, it is queued. Every 5 minutes BDVS sends queued scans to Claude (`claude-opus-5-5`, Message Batches API) and collects finished results, usually within an hour.
-2. Claude reads the recorded value for each approved limit, plus header data (batch no., size, dates, customer, challan) and documentation problems it notices (blank fields, missing signatures, overwriting). Unclear handwriting is marked *low confidence*.
+1. **Free (default, `VALUE_SOURCE = FORM`):** when PRD or QC upload, the form asks for the key values of that batch's master BMR, or for the COA test results, plus a few details (dates, batch no., challan). Typing them takes about 2–3 minutes per document. Write **NR** for a value that isn't recorded. Uploaders don't see pass/fail while typing, so nobody is tempted to adjust a value; QA sees the results.
+2. **Optional AI reading (`VALUE_SOURCE = AI`):** Claude reads the values from the scan instead (model `AI_MODEL`, default Claude Haiku, roughly ₹0.5–2 per batch, results usually within an hour). It also notes blank fields and missing signatures. Low-confidence handwriting is marked for QA to confirm.
 3. BDVS then checks:
    - **Limits:** every value against the approved limit. **Out of limit blocks acceptance** until QA records a Deviation/OOS reference (QAGE/025) and justification. QA Head and the escalation list are emailed at once.
    - **Trend:** values more than 3 SD from the mean of the last 30 accepted batches (needs at least 8) are flagged *out of trend*.
@@ -63,7 +64,7 @@ Do this signed in to the **QA Google account** that will own the data (e.g. the 
 4. Values that couldn't be read, low-confidence readings and all other flags need a QA justification, or QA enters the value read on the scan (**Correct**, audit-trailed and re-checked). QA stays the decision-maker; the AI only reads.
 5. **Reports** tab: per month and product, n / min / max / mean / SD and out-of-limit / out-of-trend counts per parameter, plus all findings and how they were closed. QA and QA Head are emailed this summary on the 1st of each month.
 
-**Cost:** typically ₹10–30 per batch (both documents) at Message Batches pricing, depending on page count. Token usage is shown in Settings. **Data:** scans are sent to Anthropic's API for reading. API data isn't used for model training; check that this fits your confidentiality agreements with customers. **Validation:** treat the AI reading as a supporting tool. During PQ, compare its readings against manual verification for a sample of batches, and record the agreement rate.
+**Cost:** free in FORM mode. The only cost is the one-time limits reading (about ₹50–150). In AI mode with Haiku, roughly ₹0.5–2 per batch. Token usage is shown in Settings. **Data:** scans are sent to Anthropic's API for reading. API data isn't used for model training; check that this fits your confidentiality agreements with customers. **Validation:** treat the AI reading as a supporting tool. During PQ, compare its readings against manual verification for a sample of batches, and record the agreement rate.
 
 ## Daily use
 
@@ -93,4 +94,4 @@ The register must be a **Google Sheet**, not an uploaded .xlsx. If Production wo
 
 ## Validation (CSV)
 
-Before GMP use, run IQ/OQ/PQ (or UAT) against URS-BDVS-001 §14. The deadline maths, reminders, versioning, audit trail, access control and closure rules are already covered by an automated test (102 checks) run during development. Repeat them as documented OQ test cases on your deployment.
+Before GMP use, run IQ/OQ/PQ (or UAT) against URS-BDVS-001 §14. The deadline maths, reminders, versioning, audit trail, access control and closure rules are already covered by an automated test (108 checks) run during development. Repeat them as documented OQ test cases on your deployment.

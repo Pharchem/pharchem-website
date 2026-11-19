@@ -410,7 +410,8 @@ function apiBootstrap_(user) {
       uploadDays: Number(setting_('UPLOAD_DAYS')) || 2
     },
     serverNow: Date.now(),
-    aiEnabled: aiOn_()
+    aiEnabled: true,
+    valueSource: aiScans_() ? 'AI' : 'FORM'
   };
 }
 
@@ -810,6 +811,8 @@ function apiUpload_(user, p) {
     if (!(pages > 0)) { throw new Error('Could not read the page count of ' + f.name + '.'); }
     return { name: safeName_(f.name), bytes: bytes, pages: pages, sha256: sha256Hex_(bytes) };
   });
+  var formErr = validateEntered_(d, p);
+  if (formErr) { throw new Error(formErr); }
   var totalPages = prepared.reduce(function (s, f) { return s + f.pages; }, 0);
   if (totalPages !== declared) {
     throw new Error('Page count mismatch: you declared ' + declared + ' pages but the files contain ' + totalPages + '.');
@@ -864,7 +867,8 @@ function apiUpload_(user, p) {
       '. Please verify it by <b>' + fmt_(verifyDue) + '</b>.', docFacts_(b, d, now)));
   var aiQueued = false;
   try { aiQueued = !!queueScan_(v.id); } catch (e) { /* checks are optional */ }
-  return { versionId: v.id, versionNo: n, verifyDueAt: iso_(verifyDue), lateHours: v.lateHours, aiQueued: aiQueued };
+  var entered = aiQueued ? null : storeEntered_(v.id, p, user);
+  return { versionId: v.id, versionNo: n, verifyDueAt: iso_(verifyDue), lateHours: v.lateHours, aiQueued: aiQueued, valuesChecked: !!entered };
 }
 
 /**
@@ -1103,6 +1107,8 @@ function apiSaveSetting_(user, p) {
     'DAILY_REMINDER_HOUR', 'MAX_FILE_MB', 'SESSION_TIMEOUT_MIN', 'PASSWORD_EXPIRY_DAYS', 'LOCKOUT_ATTEMPTS']
     .indexOf(p.key) >= 0 && !/^\d+$/.test(value)) { throw new Error('Enter a whole number.'); }
   if (p.key === 'UPLOAD_DAYS_MODE' && ['CALENDAR', 'WORKING'].indexOf(value) < 0) { throw new Error('Use CALENDAR or WORKING.'); }
+  if (p.key === 'VALUE_SOURCE' && ['FORM', 'AI'].indexOf(value) < 0) { throw new Error('Use FORM or AI.'); }
+  if (p.key === 'AI_ENABLED' && ['YES', 'NO'].indexOf(value) < 0) { throw new Error('Use YES or NO.'); }
   if (p.key === 'UPLOAD_SHIFT_NONWORKING' && ['YES', 'NO'].indexOf(value) < 0) { throw new Error('Use YES or NO.'); }
   var row = rows_('Settings').filter(function (r) { return r.key === p.key; })[0];
   var old = row ? row.value : '';

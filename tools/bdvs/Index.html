@@ -479,11 +479,24 @@ function openUpload(docId) {
     '<input type="file" id="upf" multiple accept="application/pdf,image/jpeg,image/png">' +
     '<div id="upl" style="margin:8px 0"></div>' +
     '<div class="grid2"><div><label class="f">Total number of pages scanned (count from the physical document)</label><input type="number" min="1" id="upp"></div></div>' +
+    '<div id="upv"></div>' +
     '<h3>Upload checklist</h3>' + UPLOAD_CHECKS.map(function (c) { return '<label style="display:block;margin:5px 0"><input type="checkbox" class="upc" data-k="' + c[0] + '"> ' + c[1] + '</label>'; }).join('') +
     '<label class="f" style="margin-top:8px">Remarks (optional)</label><textarea id="upr"></textarea>' +
     '<div id="uperr"></div><div class="row" style="justify-content:flex-end;margin-top:12px"><button class="btn sec" onclick="closeModal(this)">Cancel</button><button class="btn" id="upb">Upload</button></div>');
   $('upf').onchange = function (e) { addFiles(e.target.files); };
   $('upb').onclick = submitUpload;
+  UP.form = null;
+  call('formFields', { docId: docId }).then(function (f) {
+    UP.form = f;
+    if (f.mode !== 'FORM') return;
+    $('upv').innerHTML = '<h3>Values recorded in the document</h3><p class="small">Type each value exactly as written in the document (with its unit if written). Write <b>NR</b> if it is not recorded. QA checks these against the scan.</p>' +
+      (f.fields.length ? '<div class="grid2">' + f.fields.map(function (x, i) {
+        return '<div><label class="f">' + esc(x.parameter) + (x.stage ? ' <span style="font-weight:400">[' + esc(x.stage) + ']</span>' : '') + (x.unit ? ' (' + esc(x.unit) + ')' : '') + '</label><input type="text" class="upval" data-id="' + x.limitId + '" autocomplete="off"></div>';
+      }).join('') + '</div>' : '<p class="small muted">No approved limits for this document yet - nothing to enter.</p>') +
+      '<details style="margin-top:8px" open><summary class="small"><b>Details from the document</b> (fill what is written; leave blank if not on it)</summary><div class="grid2" style="margin-top:6px">' + f.header.map(function (h) {
+        return '<div><label class="f">' + esc(h.label) + '</label><input type="' + (h.type === 'date' ? 'date' : 'text') + '" class="uphdr" data-k="' + h.key + '"></div>';
+      }).join('') + '</div></details>';
+  }).catch(function () {});
 }
 function addFiles(list) {
   var max = S.boot.config.maxFileMb * 1048576;
@@ -559,6 +572,10 @@ function submitUpload(confirmDuplicate) {
   var checks = {}; var all = true;
   document.querySelectorAll('.upc').forEach(function (c) { checks[c.dataset.k] = c.checked; if (!c.checked) all = false; });
   if (!all) return showErr('uperr', 'Confirm every item of the upload checklist.');
+  var values = {}, header = {}, missingVals = [];
+  document.querySelectorAll('.upval').forEach(function (i) { values[i.dataset.id] = i.value.trim(); if (!i.value.trim()) missingVals.push(i); });
+  document.querySelectorAll('.uphdr').forEach(function (i) { if (i.value.trim()) header[i.dataset.k] = i.value.trim(); });
+  if (missingVals.length) { missingVals[0].focus(); return showErr('uperr', 'Enter every value recorded in the document (write NR if it is not recorded).'); }
   var declared = Number($('upp').value);
   var total = files.reduce(function (s, f) { return s + f.pages; }, 0);
   if (!(declared > 0)) return showErr('uperr', 'Enter the total number of pages scanned.');
@@ -574,7 +591,7 @@ function submitUpload(confirmDuplicate) {
     })
     .then(function () {
       busy(b, false); busy(b, true, 'Uploading');
-      return call('upload', { docId: UP.docId, declaredPages: declared, checklist: checks, remarks: $('upr').value, files: out, confirmDuplicate: confirmDuplicate === true });
+      return call('upload', { docId: UP.docId, declaredPages: declared, checklist: checks, remarks: $('upr').value, files: out, confirmDuplicate: confirmDuplicate === true, values: values, header: header });
     })
     .then(function (r) {
       busy(b, false);
@@ -582,7 +599,7 @@ function submitUpload(confirmDuplicate) {
         return confirmBox('Possible duplicate file', r.message + '\n\nUpload anyway?').then(function (yes) { if (yes) submitUpload(true); });
       }
       closeModal(b);
-      toast('Uploaded as version ' + r.versionNo + '. QA has been notified (verification due ' + fDT(r.verifyDueAt) + ').' + (r.aiQueued ? ' Automatic check started - results in "Automatic check" within about an hour.' : '') + (Number(r.lateHours) > 0 ? ' Marked LATE by ' + r.lateHours + ' h.' : ''));
+      toast('Uploaded as version ' + r.versionNo + '. QA has been notified (verification due ' + fDT(r.verifyDueAt) + ').' + (r.aiQueued ? ' Automatic check started - results in "Automatic check" within about an hour.' : r.valuesChecked ? ' Values recorded for QA.' : '') + (Number(r.lateHours) > 0 ? ' Marked LATE by ' + r.lateHours + ' h.' : ''));
       go(S.view);
     })
     .catch(function (e) { busy(b, false); showErr('uperr', e); });
@@ -815,7 +832,7 @@ function loadChecks(versionId, el, qa) {
     .catch(function (e) { $(el).innerHTML = '<div class="err">' + esc(e.message) + '</div>'; });
 }
 function renderChecks(box, c, versionId, qa) {
-  if (!c.aiEnabled && !c.results.length) { box.innerHTML = '<p class="small muted">Automatic checking is switched off (no Claude API key). Verify all values manually.</p>'; return; }
+  if (!c.job && !c.results.length && !c.findings.length) { box.innerHTML = '<p class="small muted">No values were recorded for this version (no approved limits at upload time). Verify all values manually.</p>'; return; }
   var html = '';
   var running = c.job && (c.job.status === 'PENDING' || c.job.status === 'SUBMITTED');
   if (running) {
@@ -829,7 +846,7 @@ function renderChecks(box, c, versionId, qa) {
       return '<div style="padding:7px 10px;border-bottom:1px solid var(--line);background:' + (f.severity === 'BLOCK' ? '#fff1f2' : '#fffbeb') + '"><span class="chip ' + (f.severity === 'BLOCK' ? 'c-bad' : 'c-warn') + '">' + (f.severity === 'BLOCK' ? 'Blocks acceptance' : 'Review') + '</span> ' +
         '<span class="small"><b>' + esc(f.type) + '</b></span> ' + esc(f.text) + (qa ? ' <button class="btn sm sec" onclick="resolveFinding(\'' + f.id + '\',\'' + f.severity + '\',\'' + versionId + '\')">' + (f.severity === 'BLOCK' ? 'Record deviation / OOS' : 'Justify') + '</button>' : '') + '</div>';
     }).join('') + '</div>';
-  } else if (c.job && c.job.status === 'DONE') {
+  } else if ((c.job && c.job.status === 'DONE') || (!c.job && c.results.length)) {
     html += '<div class="okmsg">No open flags - all values read are within limits.</div>';
   }
   var res = c.results.filter(function (r) { return r.stage !== 'HEADER'; });
@@ -837,7 +854,7 @@ function renderChecks(box, c, versionId, qa) {
   if (res.length) {
     html += '<div class="tw" style="max-height:40vh"><table><thead><tr><th>Parameter</th><th>Recorded</th><th>Limit</th><th>Page</th><th>Check</th>' + (qa ? '<th></th>' : '') + '</tr></thead><tbody>' + res.map(function (r) {
       return '<tr class="small"><td>' + esc(r.parameter) + (r.stage && r.stage !== 'OTHER' ? '<br><span class="muted">' + esc(r.stage) + '</span>' : '') + '</td><td><b>' + (esc(r.value) || '<span class="muted">-</span>') + '</b>' +
-        (r.correctedBy ? '<br><span class="muted">corrected by ' + esc(r.correctedBy) + '</span>' : r.confidence === 'low' ? '<br><span class="muted">low confidence</span>' : '') + '</td><td>' + esc(r.limitText) + '</td><td>' + esc(r.page) + '</td><td>' +
+        (r.correctedBy ? '<br><span class="muted">corrected by ' + esc(r.correctedBy) + '</span>' : r.confidence === 'low' ? '<br><span class="muted">low confidence</span>' : r.confidence === 'entered' ? '<br><span class="muted">typed at upload</span>' : '') + '</td><td>' + esc(r.limitText) + '</td><td>' + esc(r.page) + '</td><td>' +
         chip(CHECK_CHIP, r.check) + (r.oot === 'Y' ? ' <span class="chip c-warn" title="' + esc(r.ootText) + '">Out of trend</span>' : '') + '</td>' +
         (qa ? '<td>' + (r.limitId ? '<button class="btn sm sec" onclick="correctResult(\'' + r.id + '\',\'' + esc(r.parameter).replace(/'/g, '') + '\',\'' + versionId + '\')">Correct</button>' : '') + '</td>' : '') + '</tr>';
     }).join('') + '</tbody></table></div>';
@@ -1216,7 +1233,7 @@ function viewSettings(v) {
           (admin ? '<td><button class="btn sm" onclick="saveSetting(\'' + r.key + '\',\'st' + i + '\',this)">Save</button></td>' : '') + '</tr>';
       }).join('') + '</tbody></table></div>' +
       (admin ? '<div class="row" style="margin-top:10px"><button class="btn sm sec" id="tst">Send test email to departments</button><span class="small">Emails left today (Google quota): ' + (s.remainingEmailQuota == null ? '?' : s.remainingEmailQuota) + '</span></div>' : '') + '</div>' +
-      '<div class="card"><h3 style="margin-top:0">Automatic checks (Claude)</h3><div id="aist" class="small"><span class="spin"></span></div>' +
+      '<div class="card"><h3 style="margin-top:0">Automatic checks</h3><p class="small">Values are checked against the approved limits, trend, BMR/COA/dispatch and dates. <b>VALUE_SOURCE = FORM</b> (default, free): PRD / QC type the key values while uploading. <b>AI</b>: Claude reads them from the scan (API key needed; model in AI_MODEL). The API key is also used once to read the limits from the GMP documents and can be removed afterwards.</p><div id="aist" class="small"><span class="spin"></span></div>' +
       (admin ? '<div class="row" style="margin-top:8px"><input type="password" id="aik" placeholder="Anthropic API key (sk-ant-...)" style="max-width:360px" autocomplete="off"><button class="btn sm sec" id="aikb">Save API key</button></div>' : '') +
       '<div class="row" style="margin-top:8px"><button class="btn sm" id="aiq">Read limits from GMP documents</button><button class="btn sm sec" id="air">Run queue now</button></div>' +
       '<h3>Limits <span class="small">(read from the master BMR / specification / COA format; QA approves each document\'s limits once)</span></h3><div id="lim"></div></div>' +
@@ -1265,7 +1282,7 @@ function importSummary(r) {
 }
 function drawAiStatus() {
   call('aiStatus').then(function (a) {
-    $('aist').innerHTML = (a.keySet ? '<span class="chip c-ok">API key set</span>' : '<span class="chip c-bad">No API key - automatic checks are off</span>') + ' Model: <code>' + esc(a.model) + '</code> &middot; Queue: ' + a.jobs.PENDING + ' waiting, ' + a.jobs.SUBMITTED + ' being read, ' + a.jobs.DONE + ' done, ' + a.jobs.FAILED + ' failed' +
+    $('aist').innerHTML = '<span class="chip c-info">Values: ' + (a.valueSource === 'AI' ? 'read by AI' : 'typed at upload (free)') + '</span> ' + (a.keySet ? '<span class="chip c-ok">API key set</span>' : '<span class="chip c-gray">No API key</span>') + ' Scan model: <code>' + esc(a.model) + '</code> &middot; Queue: ' + a.jobs.PENDING + ' waiting, ' + a.jobs.SUBMITTED + ' being read, ' + a.jobs.DONE + ' done, ' + a.jobs.FAILED + ' failed' +
       ' &middot; Limits: ' + a.limits.approved + ' approved, ' + a.limits.draft + ' awaiting approval &middot; Tokens used: ' + Math.round(a.tokensIn / 1000) + 'k in / ' + Math.round(a.tokensOut / 1000) + 'k out' +
       (a.recentFailures.length ? '<br><span style="color:var(--bad)">Recent failures: ' + a.recentFailures.map(function (j) { return esc(j.error); }).join('; ') + '</span>' : '');
   }).catch(function () {});

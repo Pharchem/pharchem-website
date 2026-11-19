@@ -32,8 +32,10 @@ SHEETS.Results = ['id', 'versionId', 'docId', 'batchId', 'productCode', 'custome
 SHEETS.Findings = ['id', 'versionId', 'batchId', 'docType', 'type', 'severity', 'text', 'resultId', 'status',
   'devRef', 'resolution', 'resolvedBy', 'resolvedAt', 'createdAt'];
 
-DEFAULT_SETTINGS.AI_ENABLED = ['YES', 'YES = Claude reads uploaded scans and checks values against limits'];
-DEFAULT_SETTINGS.AI_MODEL = ['claude-opus-5-5', 'Claude model used to read scans and documents'];
+DEFAULT_SETTINGS.VALUE_SOURCE = ['FORM', 'FORM = PRD / QC type the key values while uploading (free); AI = Claude reads them from the scan (paid, API key needed)'];
+DEFAULT_SETTINGS.AI_ENABLED = ['YES', 'YES = allow Claude API calls (limit extraction, and scan reading when VALUE_SOURCE = AI)'];
+DEFAULT_SETTINGS.AI_MODEL = ['claude-haiku-5-5', 'Claude model that reads scans when VALUE_SOURCE = AI (Haiku = lowest cost)'];
+DEFAULT_SETTINGS.LIMITS_MODEL = ['claude-opus-5-5', 'Claude model for the one-time reading of limits from master documents'];
 DEFAULT_SETTINGS.EMAIL_QA_HEAD = ['', 'QA Head - emailed immediately when a value is out of limit (comma separated)'];
 DEFAULT_SETTINGS.TREND_BATCHES = ['30', 'Number of previous accepted batches used for the out-of-trend check'];
 
@@ -49,6 +51,7 @@ ACTIONS.correctResult = { roles: ['QA'], fn: apiCorrectResult_, write: true };
 ACTIONS.resolveFinding = { roles: ['QA'], fn: apiResolveFinding_, write: true };
 ACTIONS.recheck = { roles: ['QA'], fn: function (u, p) { queueScan_(p.versionId, true); return true; }, write: true };
 ACTIONS.monthlyReport = { roles: ['QA', 'ADMIN'], fn: apiMonthlyReport_ };
+ACTIONS.formFields = { roles: ['PRD', 'QC', 'QA'], fn: apiFormFields_ };
 ACTIONS.skipAiCheck = { roles: ['QA'], fn: function (u, p) {
   var v = findById_('Versions', p.versionId);
   if (!v) { throw new Error('Version not found.'); }
@@ -63,6 +66,7 @@ ACTIONS.skipAiCheck = { roles: ['QA'], fn: function (u, p) {
 
 function apiKey_() { return PropertiesService.getScriptProperties().getProperty('ANTHROPIC_API_KEY') || ''; }
 function aiOn_() { return setting_('AI_ENABLED') !== 'NO' && !!apiKey_(); }
+function aiScans_() { return setting_('VALUE_SOURCE') === 'AI' && aiOn_(); }
 
 function apiSetApiKey_(user, p) {
   var k = String(p.key || '').trim();
@@ -79,7 +83,7 @@ function apiAiStatus_() {
   jobs.forEach(function (j) { c[j.status] = (c[j.status] || 0) + 1; tokensIn += Number(j.inputTokens) || 0; tokensOut += Number(j.outputTokens) || 0; });
   var lim = rows_('Limits');
   return {
-    keySet: !!apiKey_(), enabled: setting_('AI_ENABLED') !== 'NO', model: setting_('AI_MODEL'), jobs: c,
+    keySet: !!apiKey_(), enabled: setting_('AI_ENABLED') !== 'NO', model: setting_('AI_MODEL'), valueSource: setting_('VALUE_SOURCE') || 'FORM', jobs: c,
     recentFailures: jobs.filter(function (j) { return j.status === 'FAILED'; }).slice(-5).map(strip_),
     tokensIn: tokensIn, tokensOut: tokensOut,
     limits: { draft: lim.filter(function (l) { return l.status === 'DRAFT'; }).length, approved: lim.filter(function (l) { return l.status === 'APPROVED'; }).length }
@@ -99,7 +103,7 @@ function queueJob_(kind, refId, batchId) {
 
 /** Called after every upload (from Code.gs). */
 function queueScan_(versionId, force) {
-  if (!aiOn_()) { return null; }
+  if (!aiScans_()) { return null; }
   var v = findById_('Versions', versionId);
   if (!v) { return null; }
   if (force) {
@@ -211,9 +215,9 @@ function pollBatches_() {
 // Requests
 // ---------------------------------------------------------------------------
 
-function baseParams_(effort, schema, system, content) {
+function baseParams_(effort, schema, system, content, model) {
   return {
-    model: setting_('AI_MODEL') || 'claude-opus-5-5',
+    model: model || setting_('AI_MODEL') || 'claude-haiku-5-5',
     max_tokens: 16000,
     output_config: { effort: effort, format: { type: 'json_schema', schema: schema } },
     system: system,
@@ -248,7 +252,8 @@ function limitsRequest_(job) {
     'You extract acceptance limits from pharmaceutical GMP master documents for an automated checking system. Copy limits exactly; never invent a limit that is not written in the document. ' +
     'limitType: RANGE (low and high), MAX (NMT / not more than / max / less than; put the value in high), MIN (NLT / not less than / min; put the value in low), TEXT (descriptive, e.g. "White paste free from foreign material"; put it in textSpec and set low/high null). ' +
     'For RANGE/MAX/MIN also copy the limit as written into textSpec. Units go in unit (e.g. %, % w/w, ppm, PSI, ml, kg). Give shelfLifeMonths if a shelf life is stated, else null.',
-    [{ type: 'text', text: 'Document: ' + d.title + '\nProduct: ' + PRODUCTS[d.productCode] + '\n\n' + what + '\n\n<document>\n' + text + '\n</document>' }]);
+    [{ type: 'text', text: 'Document: ' + d.title + '\nProduct: ' + PRODUCTS[d.productCode] + '\n\n' + what + '\n\n<document>\n' + text + '\n</document>' }],
+    setting_('LIMITS_MODEL') || 'claude-opus-5-5');
 }
 
 /** Text of a .doc / .docx / Google Doc / PDF master document (converted through a temporary Google Doc). */
@@ -331,6 +336,72 @@ function scanRequest_(job) {
     'numericValue is the number in the same unit as the limit (e.g. "6.56" -> 6.56; "18.42%" -> 18.42; "Less than 1 PPM" -> 1). Page numbers are 1-based across the whole upload. ' +
     'Set confidence=low for any handwriting you are unsure about.',
     content);
+}
+
+// ---------------------------------------------------------------------------
+// Entry form (VALUE_SOURCE = FORM): PRD / QC type the key values while uploading
+// ---------------------------------------------------------------------------
+
+var HEADER_FIELDS_ = {
+  BMR_BPR: [['batchSize', 'Batch size (as written)', 'text'], ['mfgDate', 'Date of manufacture', 'date'], ['expiryDate', 'Expiry date', 'date'],
+    ['challanNo', 'Challan no. in dispatch details', 'text'], ['dispatchDate', 'Dispatch date in dispatch details', 'date']],
+  COA_RAW: [['batchNo', 'Batch no. as printed on COA', 'text'], ['mfgDate', 'Date of manufacture', 'date'], ['expiryDate', 'Expiry date', 'date'],
+    ['sampleReceiptDate', 'Date of receipt of sample', 'date'], ['analysisCompletedDate', 'Analysis completed on', 'date'], ['reportDate', 'Report date', 'date'],
+    ['customer', 'Customer name on COA', 'text']]
+};
+
+/** Fields shown in the upload form: the approved limits for this document's master documents + header data. */
+function apiFormFields_(user, p) {
+  var d = findById_('Documents', p.docId);
+  if (!d) { throw new Error('Document not found.'); }
+  if ((user.role === 'PRD' || user.role === 'QC') && d.dept !== user.role) { throw new Error('Not permitted.'); }
+  if (setting_('VALUE_SOURCE') === 'AI' && aiOn_()) { return { mode: 'AI', fields: [], header: [] }; }
+  var limits = limitsForVersion_({ docId: d.id, batchId: d.batchId });
+  return {
+    mode: 'FORM',
+    fields: limits.map(function (l) { return { limitId: l.id, parameter: l.parameter, stage: l.stage, unit: l.unit, text: l.limitType === 'TEXT' }; }),
+    header: HEADER_FIELDS_[d.type].map(function (h) { return { key: h[0], label: h[1], type: h[2] }; })
+  };
+}
+
+/** Called from apiUpload_ (Code.gs) in FORM mode, before anything is written: returns an error text or ''. */
+function validateEntered_(d, p) {
+  if (setting_('VALUE_SOURCE') === 'AI' && aiOn_()) { return ''; }
+  var limits = limitsForVersion_({ docId: d.id, batchId: d.batchId });
+  var vals = p.values || {};
+  var missing = limits.filter(function (l) { return !String(vals[l.id] == null ? '' : vals[l.id]).trim(); });
+  if (missing.length) { return 'Enter the value recorded in the document for: ' + missing.map(function (l) { return l.parameter + (l.stage ? ' [' + l.stage + ']' : ''); }).join(', ') + ' (write NR if it is not recorded).'; }
+  return '';
+}
+
+/** Stores the values typed at upload as results and runs all checks. */
+function storeEntered_(versionId, p, user) {
+  if (setting_('VALUE_SOURCE') === 'AI' && aiOn_()) { return null; }
+  var v = findById_('Versions', versionId);
+  var d = findById_('Documents', v.docId);
+  var b = findById_('Batches', v.batchId);
+  var limits = limitsForVersion_(v);
+  var now = iso_(Date.now());
+  var base = { versionId: versionId, docId: d.id, batchId: b.id, productCode: b.productCode, customer: b.customer, docType: d.type,
+    correctedBy: '', correctionReason: '', createdAt: now, page: '', oot: '', ootText: '' };
+  var hdr = p.header || {};
+  Object.keys(hdr).forEach(function (k) {
+    var val = String(hdr[k] || '').trim();
+    if (val && HEADER_FIELDS_[d.type].some(function (h) { return h[0] === k; })) {
+      insert_('Results', Object.assign({ id: newId_('RS'), parameter: k, stage: 'HEADER', value: val, numValue: '', unit: '',
+        confidence: 'entered', limitId: '', limitText: '', check: 'INFO' }, base));
+    }
+  });
+  var vals = p.values || {};
+  limits.forEach(function (l) {
+    var raw = String(vals[l.id] == null ? '' : vals[l.id]).trim();
+    var nr = /^(nr|na|n\/a|not recorded)$/i.test(raw);
+    var num = nr ? null : raw.replace(/,/g, '').match(/-?\d+(\.\d+)?/);
+    insert_('Results', Object.assign({ id: newId_('RS'), parameter: l.parameter, stage: l.stage, value: nr ? '' : raw,
+      numValue: num ? num[0] : '', unit: l.unit, confidence: 'entered', limitId: l.id, limitText: limitText_(l), check: '' }, base));
+  });
+  evaluateVersion_(versionId);
+  return true;
 }
 
 // ---------------------------------------------------------------------------
@@ -453,9 +524,6 @@ function storeScan_(versionId, data) {
   (data.observations || []).forEach(function (o) {
     addFinding_(versionId, 'AI', 'WARN', 'p.' + o.page + ' [' + o.severity + '] ' + o.text);
   });
-  if (!Object.keys(limits).length) {
-    addFinding_(versionId, 'NO_LIMITS', 'WARN', 'No approved limits for the master documents of this batch - values could not be checked automatically. Approve limits in Settings > Limits.');
-  }
   evaluateVersion_(versionId);
 }
 
@@ -481,7 +549,7 @@ function evaluateVersion_(versionId) {
       fails.push(where + ': ' + r.value + ' vs limit ' + r.limitText);
       addFinding_(versionId, 'LIMIT', 'BLOCK', 'OUT OF LIMIT - ' + where + ': recorded ' + r.value + ', limit ' + r.limitText, r.id);
     } else if (res === 'UNREADABLE') {
-      addFinding_(versionId, 'UNREADABLE', 'WARN', 'Not found / not legible - ' + where + ' (limit ' + r.limitText + '). Read it on the scan and enter the value.', r.id);
+      addFinding_(versionId, 'UNREADABLE', 'WARN', (r.confidence === 'entered' ? 'Recorded as not available (NR) - ' : 'Not found / not legible - ') + where + ' (limit ' + r.limitText + '). Check the scan; enter the value or justify.', r.id);
     } else if (res === 'CHECK') {
       addFinding_(versionId, 'UNREADABLE', 'WARN', 'Confirm on the scan - ' + where + ': AI read "' + r.value + '" with low confidence (limit ' + r.limitText + ').', r.id);
     }
@@ -632,7 +700,7 @@ function apiGetChecks_(user, p) {
   if ((user.role === 'PRD' || user.role === 'QC') && d.dept !== user.role) { throw new Error('Not permitted.'); }
   var job = rows_('AiJobs').filter(function (j) { return j.kind === 'SCAN' && j.refId === v.id; }).pop();
   return {
-    aiEnabled: aiOn_(),
+    aiEnabled: true, valueSource: setting_('VALUE_SOURCE') || 'FORM',
     job: job ? { status: job.status, error: job.error, createdAt: job.createdAt, doneAt: job.doneAt } : null,
     results: rows_('Results').filter(function (r) { return r.versionId === v.id && r.check !== 'SUPERSEDED'; }).map(strip_),
     findings: rows_('Findings').filter(function (f) { return f.versionId === v.id && f.status !== 'SUPERSEDED'; }).map(strip_)
@@ -671,7 +739,6 @@ function apiResolveFinding_(user, p) {
 
 /** Used by apiDecide_ before ACCEPT. Returns a list of reasons the version cannot be accepted. */
 function acceptBlockers_(versionId) {
-  if (!aiOn_()) { return []; }
   var out = [];
   var job = rows_('AiJobs').filter(function (j) { return j.kind === 'SCAN' && j.refId === versionId; }).pop();
   if (job && (job.status === 'PENDING' || job.status === 'SUBMITTED')) {
