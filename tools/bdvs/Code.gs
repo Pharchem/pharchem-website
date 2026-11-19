@@ -34,7 +34,7 @@ var DOC_TYPES = {
   COA_RAW: { label: 'COA + Raw data / Analytical protocol', dept: 'QC' }
 };
 
-var SHEETS = {
+var SHEETS = Object.assign(typeof SHEETS !== 'undefined' && SHEETS ? SHEETS : {}, {
   Users: ['id', 'name', 'username', 'email', 'role', 'active', 'salt', 'pwHash', 'mustChange',
     'pwChangedAt', 'failed', 'lockedUntil', 'createdAt', 'createdBy'],
   Batches: ['id', 'productCode', 'product', 'batchNo', 'batchSize', 'dispatchDate', 'invoiceNo', 'customer', 'market',
@@ -62,11 +62,11 @@ var SHEETS = {
   ReminderLog: ['id', 'key', 'type', 'refId', 'batchNo', 'to', 'cc', 'subject', 'sentAt', 'status', 'error'],
   AuditLog: ['seq', 'timestamp', 'userId', 'userName', 'role', 'action', 'objectType', 'objectId',
     'batchNo', 'oldValue', 'newValue', 'reason', 'client', 'prevHash', 'hash']
-};
+});
 
 // key -> [default value, description]. Recipients are left blank on purpose:
 // enter them in the app (Settings) after setup.
-var DEFAULT_SETTINGS = {
+var DEFAULT_SETTINGS = Object.assign(typeof DEFAULT_SETTINGS !== 'undefined' && DEFAULT_SETTINGS ? DEFAULT_SETTINGS : {}, {
   COMPANY_NAME: ['Pharchem Pvt. Ltd.', 'Shown in the app header and emails'],
   EMAIL_PRD: ['', 'Production department mailbox (notifications)'],
   EMAIL_QC: ['', 'QC department mailbox (notifications)'],
@@ -90,7 +90,7 @@ var DEFAULT_SETTINGS = {
   PRODUCTION_SHEET_ID: ['', 'Google Sheet ID of the Daily Production & Dispatch Register filled by Production every evening'],
   IMPORT_HOUR: ['20', 'Hour (IST, 0-23) at which the production register is read and dispatched batches are registered'],
   REGISTER_MISSING_ALERT: ['YES', 'YES = alert Production and QA if no row was entered for a working day (enter NIL when there is no production)']
-};
+});
 
 // Seeded from Pharchem GMP documents: SOPs QAGE/033 (approval & release of batch),
 // QAGE/043 (GDP & data integrity), QAGE/047 (document issuance & retrieval),
@@ -156,6 +156,8 @@ function onOpen() {
     .addSeparator()
     .addItem('Run reminders now', 'runReminders')
     .addItem('Read production register now', 'runDailyImport')
+    .addItem('Run automatic checks now', 'runAiQueue')
+    .addItem('Set Claude API key', 'menuSetApiKey')
     .addItem('Verify audit trail integrity', 'menuVerifyAudit')
     .addItem('Reset admin password', 'menuResetAdmin')
     .addToUi();
@@ -239,6 +241,18 @@ function installTriggers() {
   });
   var h = Number(setting_('IMPORT_HOUR'));
   ScriptApp.newTrigger('runDailyImport').timeBased().everyDays(1).atHour(isNaN(h) ? 20 : h).inTimezone('Asia/Kolkata').create();
+  ScriptApp.getProjectTriggers().forEach(function (t) {
+    if (t.getHandlerFunction() === 'runAiQueue') { ScriptApp.deleteTrigger(t); }
+  });
+  ScriptApp.newTrigger('runAiQueue').timeBased().everyMinutes(5).create();
+}
+
+function menuSetApiKey() {
+  var ui = SpreadsheetApp.getUi();
+  var r = ui.prompt('Claude API key', 'Paste the Anthropic API key (sk-ant-...). It is stored in Script Properties, not in the sheet.', ui.ButtonSet.OK_CANCEL);
+  if (r.getSelectedButton() !== ui.Button.OK) { return; }
+  apiSetApiKey_(null, { key: r.getResponseText(), client: 'sheet menu' });
+  ui.alert('API key saved.');
 }
 
 function menuVerifyAudit() {
@@ -262,7 +276,7 @@ function menuResetAdmin() {
 // Single API entry point used by the web page
 // ---------------------------------------------------------------------------
 
-var ACTIONS = {
+var ACTIONS = Object.assign(typeof ACTIONS !== 'undefined' && ACTIONS ? ACTIONS : {}, {
   bootstrap: { roles: ROLES, fn: apiBootstrap_ },
   changePassword: { roles: ROLES, fn: apiChangePassword_, write: true, allowMustChange: true },
   dashboard: { roles: ROLES, fn: apiDashboard_ },
@@ -296,7 +310,7 @@ var ACTIONS = {
   updateUser: { roles: ['ADMIN'], fn: apiUpdateUser_, write: true },
   resetPassword: { roles: ['ADMIN'], fn: apiResetPassword_, write: true },
   sendTestEmail: { roles: ['ADMIN'], fn: apiSendTestEmail_, write: true }
-};
+});
 
 /** Called from the page via google.script.run.api(token, action, payload). */
 function api(token, action, payload) {
@@ -395,7 +409,8 @@ function apiBootstrap_(user) {
       verifyHours: Number(setting_('VERIFY_HOURS')) || 24,
       uploadDays: Number(setting_('UPLOAD_DAYS')) || 2
     },
-    serverNow: Date.now()
+    serverNow: Date.now(),
+    aiEnabled: aiOn_()
   };
 }
 
@@ -415,8 +430,22 @@ function apiDashboard_(user) {
   var hol = holidayMap_();
   var docsByBatch = groupBy_(rows_('Documents'), 'batchId');
   var versions = indexBy_(rows_('Versions'), 'id');
+  var latestVer = {};
+  Object.keys(versions).forEach(function (k) { var v = versions[k]; var cur = latestVer[v.docId]; if (!cur || Number(v.versionNo) > Number(cur.versionNo)) { latestVer[v.docId] = v; } });
+  var findingsByVer = groupBy_(rows_('Findings').filter(function (f) { return f.status === 'OPEN'; }), 'versionId');
+  var jobByVer = {};
+  rows_('AiJobs').forEach(function (j) { if (j.kind === 'SCAN') { jobByVer[j.refId] = j.status; } });
   var batches = rows_('Batches').map(function (b) {
-    var docs = (docsByBatch[b.id] || []).map(function (d) { return docView_(d, versions, now); });
+    var docs = (docsByBatch[b.id] || []).map(function (d) {
+      var x = docView_(d, versions, now);
+      var lv = latestVer[d.id];
+      if (lv) {
+        var fs = findingsByVer[lv.id] || [];
+        x.check = { versionId: lv.id, job: jobByVer[lv.id] || '', open: fs.length,
+          fails: fs.filter(function (f) { return f.type === 'LIMIT'; }).length, blocks: fs.filter(function (f) { return f.severity === 'BLOCK'; }).length };
+      }
+      return x;
+    });
     if (user.role === 'PRD' || user.role === 'QC') {
       docs = docs.filter(function (d) { return d.dept === user.role; });
     }
@@ -833,7 +862,9 @@ function apiUpload_(user, p) {
       user.name + ' (' + user.role + ') uploaded <b>' + DOC_TYPES[d.type].label + '</b> version ' + n +
       ' (' + totalPages + ' pages)' + (late ? ', <b style="color:#b91c1c">late by ' + v.lateHours + ' h</b>' : '') +
       '. Please verify it by <b>' + fmt_(verifyDue) + '</b>.', docFacts_(b, d, now)));
-  return { versionId: v.id, versionNo: n, verifyDueAt: iso_(verifyDue), lateHours: v.lateHours };
+  var aiQueued = false;
+  try { aiQueued = !!queueScan_(v.id); } catch (e) { /* checks are optional */ }
+  return { versionId: v.id, versionNo: n, verifyDueAt: iso_(verifyDue), lateHours: v.lateHours, aiQueued: aiQueued };
 }
 
 /**
@@ -853,6 +884,10 @@ function apiDecide_(user, p) {
   var b = findById_('Batches', d.batchId);
   if (b.status === 'CLOSED') { throw new Error('Batch is closed.'); }
   if (p.outcome !== 'ACCEPT' && p.outcome !== 'REJECT') { throw new Error('Choose Accept or Reject.'); }
+  if (p.outcome === 'ACCEPT') {
+    var blockers = acceptBlockers_(v.id);
+    if (blockers.length) { throw new Error('Cannot accept yet:\n- ' + blockers.join('\n- ')); }
+  }
 
   var items = activeChecklist_(d.type);
   var answers = {};
@@ -1283,9 +1318,31 @@ function runReminders() {
         }
       }
     });
+    monthlyReportMail_(now);
   } finally {
     lock.releaseLock();
   }
+}
+
+/** On the 1st of each month (after the daily reminder hour) email QA the previous month's limits / trend summary. */
+function monthlyReportMail_(now) {
+  var d = istParts_(now);
+  var hour = Number(setting_('DAILY_REMINDER_HOUR')); if (isNaN(hour)) { hour = 9; }
+  if (d.getUTCDate() !== 1 || d.getUTCHours() < hour) { return; }
+  var prev = istParts_(now - 2 * DAY);
+  var month = prev.getUTCFullYear() + '-' + pad_(prev.getUTCMonth() + 1);
+  if (sentBefore_('MONTHLY|' + month)) { return; }
+  var r = apiMonthlyReport_(null, { month: month });
+  var rows = r.rows.map(function (x) {
+    return '<tr><td>' + x.productCode + '</td><td>' + esc_(x.parameter) + (x.stage ? ' [' + esc_(x.stage) + ']' : '') + '</td><td>' + esc_(x.limitText) + '</td><td>' + x.n +
+      '</td><td>' + (x.min == null ? '' : x.min) + ' - ' + (x.max == null ? '' : x.max) + '</td><td>' + (x.mean == null ? '' : x.mean) + '</td><td' + (x.fail ? ' style="color:#b91c1c;font-weight:bold"' : '') + '>' + x.fail +
+      '</td><td' + (x.oot ? ' style="color:#b45309;font-weight:bold"' : '') + '>' + x.oot + '</td></tr>';
+  }).join('');
+  sendMail_('MONTHLY|' + month, 'MONTHLY_REPORT', '', '', deptEmails_('QA'), splitEmails_(setting_('EMAIL_QA_HEAD')),
+    'Monthly limits & trend report - ' + month,
+    mailBody_('Monthly limits & trend report - ' + month, r.batches + ' batches dispatched, ' + r.closed + ' closed. Out-of-limit and out-of-trend counts per parameter:' +
+      '<table border="1" cellpadding="4" style="border-collapse:collapse;font-size:12px;margin-top:8px"><tr><th>Product</th><th>Parameter</th><th>Limit</th><th>n</th><th>Range</th><th>Mean</th><th>Out of limit</th><th>Out of trend</th></tr>' +
+      rows + '</table><p>Full report with all findings: BDVS &gt; Reports.</p>', ''));
 }
 
 // ---------------------------------------------------------------------------

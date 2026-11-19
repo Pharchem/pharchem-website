@@ -268,8 +268,8 @@ function start() {
 /* ======================= shell & navigation ======================= */
 function tabsFor() {
   var r = role();
-  if (r === 'QA') return [['dashboard', 'Dashboard'], ['register', 'Register dispatch'], ['verify', 'Verification queue'], ['hardcopy', 'Hardcopy receipt'], ['audit', 'Audit trail'], ['reminders', 'Reminder log'], ['settings', 'Settings']];
-  if (r === 'ADMIN') return [['dashboard', 'Dashboard'], ['users', 'Users'], ['settings', 'Settings'], ['audit', 'Audit trail'], ['reminders', 'Reminder log']];
+  if (r === 'QA') return [['dashboard', 'Dashboard'], ['register', 'Register dispatch'], ['verify', 'Verification queue'], ['hardcopy', 'Hardcopy receipt'], ['reports', 'Reports'], ['audit', 'Audit trail'], ['reminders', 'Reminder log'], ['settings', 'Settings']];
+  if (r === 'ADMIN') return [['dashboard', 'Dashboard'], ['users', 'Users'], ['settings', 'Settings'], ['reports', 'Reports'], ['audit', 'Audit trail'], ['reminders', 'Reminder log']];
   return [['tasks', 'My tasks'], ['dashboard', 'My batches']];
 }
 function renderShell() {
@@ -293,7 +293,7 @@ function go(view, silent) {
   var v = $('view');
   if (!silent) v.innerHTML = '<p class="muted"><span class="spin"></span> Loading...</p>';
   var fn = { dashboard: viewDashboard, tasks: viewTasks, register: viewRegister, verify: viewVerifyQueue, hardcopy: viewHardcopy,
-    audit: viewAudit, reminders: viewReminders, settings: viewSettings, users: viewUsers }[view];
+    audit: viewAudit, reminders: viewReminders, settings: viewSettings, users: viewUsers, reports: viewReports }[view];
   Promise.resolve(fn(v)).catch(function (e) { v.innerHTML = '<div class="err">' + esc(e.message) + '</div>'; });
 }
 function loadDash() {
@@ -372,7 +372,16 @@ function docCell(x) {
   if (x.status === 'REJECTED') due = '<br><span class="small">Rejected ' + x.rejectCount + 'x</span>';
   if (x.status === 'UNDER_VERIFICATION') due = '<br><span class="small">v' + x.currentVersion + ', verify by ' + fDT(x.verifyDueAt) + '</span> ' + left(x.verifyDueAt);
   if (x.status === 'HARDCOPY_PENDING') due = '<br><span class="small">Hardcopy due ' + fD(x.hardcopyDueAt) + '</span> ' + left(x.hardcopyDueAt);
-  return chip(DOC_STATUS, x.status) + (x.overdue ? ' <span class="chip c-bad">' + OVERDUE[x.overdue] + '</span>' : '') + due;
+  return chip(DOC_STATUS, x.status) + (x.overdue ? ' <span class="chip c-bad">' + OVERDUE[x.overdue] + '</span>' : '') + checkChip(x) + due;
+}
+function checkChip(x) {
+  if (!x.check || !S.boot.aiEnabled || x.status === 'PENDING_UPLOAD') return '';
+  var c = x.check;
+  if (c.job === 'PENDING' || c.job === 'SUBMITTED') return ' <span class="chip c-gray">AI check running</span>';
+  if (c.fails) return ' <span class="chip c-bad">' + c.fails + ' out of limit</span>';
+  if (c.open) return ' <span class="chip c-warn">' + c.open + ' flag(s) to review</span>';
+  if (c.job === 'DONE') return ' <span class="chip c-ok">Auto-check OK</span>';
+  return '';
 }
 function drawDash() {
   var rows = filteredBatches();
@@ -382,7 +391,8 @@ function drawDash() {
     (rows.length ? rows.map(function (b) {
       var bmr = b.docs.filter(function (x) { return x.type === 'BMR_BPR'; })[0];
       var coa = b.docs.filter(function (x) { return x.type === 'COA_RAW'; })[0];
-      return '<tr class="' + (b.overdue ? 'over' : '') + '"><td><b>' + esc(b.batchNo) + '</b><br><span class="small">' + esc(b.site) + '</span></td><td>' + esc(b.product) + '<br><span class="small">' + esc(b.batchSize) + '</span></td>' +
+      var day = b.status === 'CLOSED' ? '' : ' <span class="chip ' + (b.ageDays > 3 ? 'c-bad' : b.ageDays >= 2 ? 'c-warn' : 'c-ok') + '" title="Days since dispatch (target: all data verified within 3 days)">Day ' + b.ageDays + '</span>';
+      return '<tr class="' + (b.overdue ? 'over' : '') + '"><td><b>' + esc(b.batchNo) + '</b>' + day + '<br><span class="small">' + esc(b.site) + '</span></td><td>' + esc(b.product) + '<br><span class="small">' + esc(b.batchSize) + '</span></td>' +
         '<td>' + esc(b.customer) + '<br><span class="small">' + esc(b.invoiceNo) + ' &middot; ' + esc(b.market) + '</span></td><td>' + fYmd(b.dispatchDate) + '</td><td>' + chip(BATCH_STATUS, b.status) + '</td>' +
         (showBoth ? '<td>' + docCell(bmr) + '</td><td>' + docCell(coa) + '</td>' : '<td>' + docCell(b.docs[0]) + '</td>') +
         '<td><button class="btn sm sec" onclick="openBatch(\'' + b.id + '\')">Open</button></td></tr>';
@@ -572,7 +582,7 @@ function submitUpload(confirmDuplicate) {
         return confirmBox('Possible duplicate file', r.message + '\n\nUpload anyway?').then(function (yes) { if (yes) submitUpload(true); });
       }
       closeModal(b);
-      toast('Uploaded as version ' + r.versionNo + '. QA has been notified (verification due ' + fDT(r.verifyDueAt) + ').' + (Number(r.lateHours) > 0 ? ' Marked LATE by ' + r.lateHours + ' h.' : ''));
+      toast('Uploaded as version ' + r.versionNo + '. QA has been notified (verification due ' + fDT(r.verifyDueAt) + ').' + (r.aiQueued ? ' Automatic check started - results in "Automatic check" within about an hour.' : '') + (Number(r.lateHours) > 0 ? ' Marked LATE by ' + r.lateHours + ' h.' : ''));
       go(S.view);
     })
     .catch(function (e) { busy(b, false); showErr('uperr', e); });
@@ -641,7 +651,7 @@ function docCard(b, d) {
       (Number(v.lateHours) > 0 ? ' <span class="chip c-bad">Late ' + v.lateHours + ' h</span>' : '') +
       '<div class="small">Uploaded ' + fDT(v.uploadedAt) + ' by ' + esc(v.uploaderName) + ' &middot; ' + v.actualPages + ' pages' + (v.remarks ? ' &middot; "' + esc(v.remarks) + '"' : '') + '</div>' +
       (v.decidedAt ? '<div class="small">' + (v.status === 'ACCEPTED' ? 'Accepted' : 'Rejected') + ' ' + fDT(v.decidedAt) + ' by ' + esc(v.decidedBy) + ' &middot; ' + v.elapsedHours + ' working h' + (v.breach === 'Y' ? ' <b style="color:var(--bad)">(24 h breached)</b>' : '') + '</div>' : '<div class="small">Verify by ' + fDT(v.verifyDueAt) + ' ' + left(v.verifyDueAt) + '</div>') +
-      '<div style="margin-top:4px">' + v.files.map(function (f, i) { return '<button class="btn sm sec" style="margin:2px" onclick="viewFile(\'' + v.id + '\',' + i + ',\'' + esc(f.name).replace(/'/g, '') + '\')">View ' + esc(f.name.replace(/^.*?_v\d+_\d+_/, '')) + ' (' + f.pages + ' p)</button>'; }).join('') + '</div>' +
+      '<div style="margin-top:4px">' + (S.boot.aiEnabled ? '<button class="btn sm sec" style="margin:2px" onclick="showChecks(\'' + v.id + '\',\'v' + v.versionNo + '\')">Automatic check</button>' : '') + v.files.map(function (f, i) { return '<button class="btn sm sec" style="margin:2px" onclick="viewFile(\'' + v.id + '\',' + i + ',\'' + esc(f.name).replace(/'/g, '') + '\')">View ' + esc(f.name.replace(/^.*?_v\d+_\d+_/, '')) + ' (' + f.pages + ' p)</button>'; }).join('') + '</div>' +
       (obs.length ? '<table style="margin-top:6px"><thead><tr><th>Page</th><th>Severity</th><th>Observation</th></tr></thead><tbody>' + obs.map(function (o) {
         return '<tr><td>' + esc(o.page) + '</td><td><span class="chip ' + (o.severity === 'Critical' ? 'c-bad' : o.severity === 'Major' ? 'c-warn' : 'c-gray') + '">' + esc(o.severity) + '</span></td><td>' + esc(o.text) + '</td></tr>';
       }).join('') + '</tbody></table>' : '') +
@@ -742,6 +752,7 @@ function openVerify(batchId, docId) {
       '<div><b>Pages</b>' + v.actualPages + '</div><div><b>Verify by</b>' + fDT(v.verifyDueAt) + ' ' + left(v.verifyDueAt) + '</div></div>' +
       masterDocsHtml(b.masterDocs) +
       (prev.length ? '<details class="small"><summary><b>' + prev.length + ' observation(s) on earlier versions</b> - check they are corrected</summary>' + prev.map(function (o) { return '<div>p.' + esc(o.page) + ' [' + esc(o.severity) + '] ' + esc(o.text) + '</div>'; }).join('') + '</details>' : '') +
+      '<h3>Automatic check <span class="small">(limits, trend, BMR/COA/dispatch cross-check, dates)</span></h3><div id="ckres"><span class="spin"></span></div>' +
       '<h3>Checklist <span class="small">(answer every item; "No" requires rejection)</span></h3><div class="row small" style="margin-bottom:4px"><a href="#" onclick="allYes();return false">Mark all remaining as Yes</a></div><div class="ckl" id="ckl"></div>' +
       '<h3>Observations <span class="small">(required to reject)</span></h3><table class="obs"><thead><tr><th style="width:70px">Page</th><th>Observation</th><th style="width:110px">Severity</th><th></th></tr></thead><tbody id="obsb"></tbody></table>' +
       '<button class="btn sm sec" style="margin-top:4px" onclick="addObs()">+ Add observation</button>' +
@@ -751,6 +762,7 @@ function openVerify(batchId, docId) {
       '</div></div>';
     new Viewer($('vw2'), v.id, v.files);
     drawChecklist(); drawObs();
+    loadChecks(v.id, 'ckres', true);
   }).catch(function (e) { $('vfb').innerHTML = '<div class="err">' + esc(e.message) + '</div>'; });
 }
 function drawChecklist() {
@@ -794,6 +806,111 @@ function decide(outcome) {
       toast((outcome === 'ACCEPT' ? 'Verified OK. Hardcopy requested from ' : 'Rejected and returned to ') + VF.d.dept + '. Time taken: ' + r.elapsedHours + ' working h' + (r.breach === 'Y' ? ' (24 h BREACHED)' : '') + '.');
       go(S.view);
     }).catch(function (e) { busy(btn, false); showErr('vferr', e); });
+}
+
+/* ======================= automatic checks ======================= */
+var CHECK_CHIP = { PASS: ['Within limit', 'c-ok'], FAIL: ['OUT OF LIMIT', 'c-bad'], UNREADABLE: ['Not read', 'c-warn'], CHECK: ['Confirm', 'c-warn'], INFO: ['Recorded', 'c-gray'], NO_LIMIT: ['No limit', 'c-gray'] };
+function loadChecks(versionId, el, qa) {
+  return call('getChecks', { versionId: versionId }).then(function (c) { renderChecks($(el), c, versionId, qa); })
+    .catch(function (e) { $(el).innerHTML = '<div class="err">' + esc(e.message) + '</div>'; });
+}
+function renderChecks(box, c, versionId, qa) {
+  if (!c.aiEnabled && !c.results.length) { box.innerHTML = '<p class="small muted">Automatic checking is switched off (no Claude API key). Verify all values manually.</p>'; return; }
+  var html = '';
+  var running = c.job && (c.job.status === 'PENDING' || c.job.status === 'SUBMITTED');
+  if (running) {
+    html += '<div class="card small" style="padding:10px;background:#f8fafc"><span class="spin"></span> Claude is reading the scan (started ' + fDT(c.job.createdAt) + '; usually under an hour). Values will appear here.' +
+      (qa ? ' <button class="btn sm sec" onclick="skipAi(\'' + versionId + '\')">Proceed without automatic check</button>' : '') + '</div>';
+  }
+  var open = c.findings.filter(function (f) { return f.status === 'OPEN'; });
+  var done = c.findings.filter(function (f) { return f.status === 'RESOLVED'; });
+  if (open.length) {
+    html += '<div style="border:1px solid var(--line);border-radius:8px;margin-bottom:8px">' + open.map(function (f) {
+      return '<div style="padding:7px 10px;border-bottom:1px solid var(--line);background:' + (f.severity === 'BLOCK' ? '#fff1f2' : '#fffbeb') + '"><span class="chip ' + (f.severity === 'BLOCK' ? 'c-bad' : 'c-warn') + '">' + (f.severity === 'BLOCK' ? 'Blocks acceptance' : 'Review') + '</span> ' +
+        '<span class="small"><b>' + esc(f.type) + '</b></span> ' + esc(f.text) + (qa ? ' <button class="btn sm sec" onclick="resolveFinding(\'' + f.id + '\',\'' + f.severity + '\',\'' + versionId + '\')">' + (f.severity === 'BLOCK' ? 'Record deviation / OOS' : 'Justify') + '</button>' : '') + '</div>';
+    }).join('') + '</div>';
+  } else if (c.job && c.job.status === 'DONE') {
+    html += '<div class="okmsg">No open flags - all values read are within limits.</div>';
+  }
+  var res = c.results.filter(function (r) { return r.stage !== 'HEADER'; });
+  var hdr = c.results.filter(function (r) { return r.stage === 'HEADER'; });
+  if (res.length) {
+    html += '<div class="tw" style="max-height:40vh"><table><thead><tr><th>Parameter</th><th>Recorded</th><th>Limit</th><th>Page</th><th>Check</th>' + (qa ? '<th></th>' : '') + '</tr></thead><tbody>' + res.map(function (r) {
+      return '<tr class="small"><td>' + esc(r.parameter) + (r.stage && r.stage !== 'OTHER' ? '<br><span class="muted">' + esc(r.stage) + '</span>' : '') + '</td><td><b>' + (esc(r.value) || '<span class="muted">-</span>') + '</b>' +
+        (r.correctedBy ? '<br><span class="muted">corrected by ' + esc(r.correctedBy) + '</span>' : r.confidence === 'low' ? '<br><span class="muted">low confidence</span>' : '') + '</td><td>' + esc(r.limitText) + '</td><td>' + esc(r.page) + '</td><td>' +
+        chip(CHECK_CHIP, r.check) + (r.oot === 'Y' ? ' <span class="chip c-warn" title="' + esc(r.ootText) + '">Out of trend</span>' : '') + '</td>' +
+        (qa ? '<td>' + (r.limitId ? '<button class="btn sm sec" onclick="correctResult(\'' + r.id + '\',\'' + esc(r.parameter).replace(/'/g, '') + '\',\'' + versionId + '\')">Correct</button>' : '') + '</td>' : '') + '</tr>';
+    }).join('') + '</tbody></table></div>';
+  }
+  if (hdr.length) html += '<details class="small" style="margin-top:6px"><summary>Header data read from the document</summary>' + hdr.map(function (h) { return '<div>' + esc(h.parameter) + ': <b>' + esc(h.value) + '</b></div>'; }).join('') + '</details>';
+  if (done.length) html += '<details class="small" style="margin-top:6px"><summary>' + done.length + ' flag(s) resolved</summary>' + done.map(function (f) { return '<div>' + esc(f.text) + ' &rarr; <i>' + (f.devRef ? 'Ref ' + esc(f.devRef) + ': ' : '') + esc(f.resolution) + '</i> (' + esc(f.resolvedBy) + ')</div>'; }).join('') + '</details>';
+  if (qa && c.job && !running) html += '<div style="margin-top:6px"><button class="btn sm sec" onclick="recheck(\'' + versionId + '\')">Run the automatic check again</button></div>';
+  if (c.job && c.job.status === 'FAILED') html = '<div class="err">Automatic check failed: ' + esc(c.job.error) + '. Verify all values manually.</div>' + html;
+  box.innerHTML = html || '<p class="small muted">No automatic check for this version.</p>';
+}
+function refreshChecks(versionId) { if ($('ckres')) loadChecks(versionId, 'ckres', true); if ($('ckm')) loadChecks(versionId, 'ckm', isQA()); }
+function resolveFinding(id, sev, versionId) {
+  var bg = openModal(mh(sev === 'BLOCK' ? 'Out of limit - record deviation / OOS' : 'Justify flag') +
+    (sev === 'BLOCK' ? '<label class="f">Deviation / OOS reference no. (QAGE/025)</label><input type="text" id="rf1">' : '') +
+    '<label class="f" style="margin-top:8px">Justification / impact assessment</label><textarea id="rf2"></textarea><div id="rferr"></div>' +
+    '<div class="row" style="justify-content:flex-end;margin-top:10px"><button class="btn" id="rfb">Save</button></div>');
+  $('rfb').onclick = function () {
+    call('resolveFinding', { findingId: id, devRef: $('rf1') ? $('rf1').value : '', resolution: $('rf2').value })
+      .then(function () { bg.remove(); refreshChecks(versionId); }).catch(function (e) { showErr('rferr', e); });
+  };
+}
+function correctResult(id, param, versionId) {
+  var bg = openModal(mh('Correct value - ' + esc(param)) + '<p class="small">Enter the value exactly as written on the scan. The change is audit-trailed and the limit check is re-run.</p>' +
+    '<label class="f">Value on the scan</label><input type="text" id="cr1"><label class="f" style="margin-top:8px">Reason</label><input type="text" id="cr2" value="Read from scan by QA">' +
+    '<div id="crerr"></div><div class="row" style="justify-content:flex-end;margin-top:10px"><button class="btn" id="crb">Save</button></div>');
+  $('crb').onclick = function () {
+    call('correctResult', { resultId: id, value: $('cr1').value, reason: $('cr2').value }).then(function () { bg.remove(); refreshChecks(versionId); }).catch(function (e) { showErr('crerr', e); });
+  };
+}
+function skipAi(versionId) {
+  askText('Proceed without automatic check', 'Reason (recorded in the audit trail)').then(function (r) {
+    if (r) call('skipAiCheck', { versionId: versionId, reason: r }).then(function () { refreshChecks(versionId); }).catch(function (e) { toast(e.message); });
+  });
+}
+function recheck(versionId) { call('recheck', { versionId: versionId }).then(function () { toast('Automatic check queued.'); refreshChecks(versionId); }).catch(function (e) { toast(e.message); }); }
+function showChecks(versionId, title) {
+  openModal(mh('Automatic check - ' + esc(title)) + '<div id="ckm"><span class="spin"></span></div>', true);
+  loadChecks(versionId, 'ckm', isQA());
+}
+
+/* ======================= reports ======================= */
+function viewReports(v) {
+  var d = new Date(Date.now() + IST);
+  var m = d.getUTCFullYear() + '-' + pad(d.getUTCMonth() + 1);
+  v.innerHTML = '<h2>Monthly limits &amp; trend report</h2><div class="row" style="margin-bottom:10px"><input type="month" id="rpm" value="' + m + '" style="max-width:180px">' +
+    '<select id="rpp" style="max-width:260px"><option value="">All products</option><option value="ALP">' + PRODUCTS.ALP + '</option><option value="MGP">' + PRODUCTS.MGP + '</option></select>' +
+    '<button class="btn sm" id="rpb">Show</button><button class="btn sm sec" id="rpx">Export CSV</button><button class="btn sm sec" onclick="window.print()">Print / PDF</button></div><div id="rpo"></div>';
+  var data = null;
+  var load = function () {
+    $('rpo').innerHTML = '<span class="spin"></span>';
+    return call('monthlyReport', { month: $('rpm').value, productCode: $('rpp').value }).then(function (r) {
+      data = r;
+      $('rpo').innerHTML = '<div class="card small">' + r.batches + ' batches dispatched in ' + esc(r.month) + ', ' + r.closed + ' closed. Statistics use the final verified version of each document.</div>' +
+        '<div class="tw"><table><thead><tr><th>Product</th><th>Document</th><th>Parameter</th><th>Limit</th><th>n</th><th>Min</th><th>Max</th><th>Mean</th><th>SD</th><th>Out of limit</th><th>Out of trend</th><th>Not read</th></tr></thead><tbody>' +
+        (r.rows.length ? r.rows.map(function (x) {
+          return '<tr><td>' + x.productCode + '</td><td class="small">' + (x.docType === 'BMR_BPR' ? 'BMR' : 'COA') + '</td><td>' + esc(x.parameter) + (x.stage ? '<br><span class="small muted">' + esc(x.stage) + '</span>' : '') + '</td><td class="small">' + esc(x.limitText) +
+            '</td><td>' + x.n + '</td><td>' + (x.min == null ? '-' : x.min) + '</td><td>' + (x.max == null ? '-' : x.max) + '</td><td>' + (x.mean == null ? '-' : x.mean) + '</td><td>' + (x.sd == null ? '-' : x.sd) +
+            '</td><td>' + (x.fail ? '<b style="color:var(--bad)">' + x.fail + '</b>' : 0) + '</td><td>' + (x.oot ? '<b style="color:var(--warn)">' + x.oot + '</b>' : 0) + '</td><td>' + x.unreadable + '</td></tr>';
+        }).join('') : '<tr><td colspan="12" class="muted">No checked results for this month.</td></tr>') + '</tbody></table></div>' +
+        '<h3>Findings (' + r.findings.length + ')</h3>' + (r.findings.length ? '<div class="tw"><table><thead><tr><th>Batch</th><th>Doc</th><th>Type</th><th>Finding</th><th>Status / resolution</th></tr></thead><tbody>' + r.findings.map(function (f) {
+          return '<tr class="small"><td>' + esc(f.batchNo) + '</td><td>' + (f.docType === 'BMR_BPR' ? 'BMR' : 'COA') + '</td><td>' + esc(f.type) + '</td><td>' + esc(f.text) + '</td><td>' + esc(f.status) + (f.devRef ? ' - Ref ' + esc(f.devRef) : '') + (f.resolution ? ': ' + esc(f.resolution) : '') + '</td></tr>';
+        }).join('') + '</tbody></table></div>' : '<p class="muted">None.</p>');
+    }).catch(function (e) { $('rpo').innerHTML = '<div class="err">' + esc(e.message) + '</div>'; });
+  };
+  $('rpb').onclick = load;
+  $('rpx').onclick = function () {
+    if (!data) return;
+    download('BDVS_limits_trend_' + data.month + '.csv', csv([['Product', 'Document', 'Parameter', 'Stage', 'Limit', 'n', 'Min', 'Max', 'Mean', 'SD', 'Out of limit', 'Out of trend', 'Not read']]
+      .concat(data.rows.map(function (x) { return [x.productCode, x.docType, x.parameter, x.stage, x.limitText, x.n, x.min, x.max, x.mean, x.sd, x.fail, x.oot, x.unreadable]; }))
+      .concat([[], ['Batch', 'Document', 'Type', 'Severity', 'Finding', 'Status', 'Deviation/OOS ref', 'Resolution']])
+      .concat(data.findings.map(function (f) { return [f.batchNo, f.docType, f.type, f.severity, f.text, f.status, f.devRef, f.resolution]; }))));
+  };
+  return load();
 }
 
 /* ======================= hardcopy ======================= */
@@ -1099,6 +1216,10 @@ function viewSettings(v) {
           (admin ? '<td><button class="btn sm" onclick="saveSetting(\'' + r.key + '\',\'st' + i + '\',this)">Save</button></td>' : '') + '</tr>';
       }).join('') + '</tbody></table></div>' +
       (admin ? '<div class="row" style="margin-top:10px"><button class="btn sm sec" id="tst">Send test email to departments</button><span class="small">Emails left today (Google quota): ' + (s.remainingEmailQuota == null ? '?' : s.remainingEmailQuota) + '</span></div>' : '') + '</div>' +
+      '<div class="card"><h3 style="margin-top:0">Automatic checks (Claude)</h3><div id="aist" class="small"><span class="spin"></span></div>' +
+      (admin ? '<div class="row" style="margin-top:8px"><input type="password" id="aik" placeholder="Anthropic API key (sk-ant-...)" style="max-width:360px" autocomplete="off"><button class="btn sm sec" id="aikb">Save API key</button></div>' : '') +
+      '<div class="row" style="margin-top:8px"><button class="btn sm" id="aiq">Read limits from GMP documents</button><button class="btn sm sec" id="air">Run queue now</button></div>' +
+      '<h3>Limits <span class="small">(read from the master BMR / specification / COA format; QA approves each document\'s limits once)</span></h3><div id="lim"></div></div>' +
       '<div class="card"><h3 style="margin-top:0">Daily Production &amp; Dispatch Register</h3><p class="small">Production adds one row per batch every evening (Mfg Date, Batch No., Customer...) and fills <b>Dispatch Date</b> and <b>Invoice / Challan No.</b> when the batch leaves. BDVS reads the sheet every evening, registers dispatched batches automatically, writes the result in the <b>BDVS Status</b> column and emails QA a summary.</p>' +
       '<div class="row"><input type="text" id="psl" placeholder="Link of the Google Sheet" value="' + esc((s.settings.filter(function (x) { return x.key === 'PRODUCTION_SHEET_ID'; })[0] || {}).value ? 'https://docs.google.com/spreadsheets/d/' + (s.settings.filter(function (x) { return x.key === 'PRODUCTION_SHEET_ID'; })[0] || {}).value + '/edit' : '') + '" style="max-width:460px">' +
       '<button class="btn sm sec" id="psb">Link sheet</button><button class="btn sm sec" id="psc">Create template sheet</button><button class="btn sm" id="psr">Read now</button></div><div id="psm" class="small" style="margin-top:6px"></div><div id="psl2" style="margin-top:8px"></div></div>' +
@@ -1130,6 +1251,10 @@ function viewSettings(v) {
     $('psc').onclick = function () { var b = this; busy(b, true); call('createProductionSheet', {}).then(function (r) { busy(b, false); $('psl').value = r.url; $('psm').innerHTML = 'Created and linked. <a href="' + esc(r.url) + '" target="_blank" rel="noopener">Open the register</a> - it is shared with the Production mailbox (edit) and QC / QA (view).'; }).catch(function (e) { busy(b, false); $('psm').innerHTML = '<span style="color:var(--bad)">' + esc(e.message) + '</span>'; }); };
     $('psr').onclick = function () { var b = this; busy(b, true, 'Reading'); call('importProduction', {}).then(function (r) { busy(b, false); $('psm').innerHTML = importSummary(r); drawImportLog(); loadDash(); }).catch(function (e) { busy(b, false); $('psm').innerHTML = '<span style="color:var(--bad)">' + esc(e.message) + '</span>'; }); };
     drawImportLog();
+    drawAiStatus(); drawLimits();
+    if ($('aikb')) $('aikb').onclick = function () { call('setApiKey', { key: $('aik').value }).then(function () { $('aik').value = ''; toast('API key saved.'); drawAiStatus(); }).catch(function (e) { toast(e.message); }); };
+    $('aiq').onclick = function () { var b = this; busy(b, true); call('queueLimitExtraction', {}).then(function (r) { busy(b, false); toast(r.queued + ' documents queued - limits appear as drafts within about an hour.'); drawAiStatus(); }).catch(function (e) { busy(b, false); toast(e.message); }); };
+    $('air').onclick = function () { var b = this; busy(b, true); call('runAiNow', {}).then(function () { busy(b, false); drawAiStatus(); drawLimits(); }).catch(function (e) { busy(b, false); toast(e.message); }); };
     $('hb').onclick = function () { call('addHoliday', { date: $('hd').value, name: $('hn').value }).then(function () { toast('Holiday added.'); go('settings'); }).catch(function (e) { toast(e.message); }); };
   });
 }
@@ -1137,6 +1262,53 @@ function importSummary(r) {
   return '<b>' + r.registered.length + ' registered</b>, ' + r.awaiting.length + ' awaiting dispatch, ' + r.already + ' already registered' +
     (r.errors.length ? ', <b style="color:var(--bad)">' + r.errors.length + ' with problems</b>: ' + r.errors.map(function (e) { return 'row ' + e.row + ' ' + esc(e.batchNo) + ' - ' + esc(e.error); }).join('; ') : '') +
     (r.registered.some(function (x) { return x.matchSource !== 'remembered'; }) ? '<br><span style="color:var(--warn)">New customers were auto-matched to master documents - check them in the batch (Change master documents).</span>' : '');
+}
+function drawAiStatus() {
+  call('aiStatus').then(function (a) {
+    $('aist').innerHTML = (a.keySet ? '<span class="chip c-ok">API key set</span>' : '<span class="chip c-bad">No API key - automatic checks are off</span>') + ' Model: <code>' + esc(a.model) + '</code> &middot; Queue: ' + a.jobs.PENDING + ' waiting, ' + a.jobs.SUBMITTED + ' being read, ' + a.jobs.DONE + ' done, ' + a.jobs.FAILED + ' failed' +
+      ' &middot; Limits: ' + a.limits.approved + ' approved, ' + a.limits.draft + ' awaiting approval &middot; Tokens used: ' + Math.round(a.tokensIn / 1000) + 'k in / ' + Math.round(a.tokensOut / 1000) + 'k out' +
+      (a.recentFailures.length ? '<br><span style="color:var(--bad)">Recent failures: ' + a.recentFailures.map(function (j) { return esc(j.error); }).join('; ') + '</span>' : '');
+  }).catch(function () {});
+}
+var LIM = null;
+function drawLimits() {
+  call('getLimits').then(function (r) {
+    LIM = r;
+    var byM = {};
+    r.limits.forEach(function (l) { (byM[l.masterId] = byM[l.masterId] || []).push(l); });
+    var ms = r.masters.filter(function (m) { return byM[m.id]; }).sort(function (a, b) { return a.title.localeCompare(b.title, undefined, { numeric: true }); });
+    var none = r.masters.filter(function (m) { return !byM[m.id]; }).length;
+    $('lim').innerHTML = (ms.length ? ms.map(function (m) {
+      var ls = byM[m.id].sort(function (a, b) { return a.order - b.order; });
+      var drafts = ls.filter(function (l) { return l.status === 'DRAFT'; }).length;
+      return '<details' + (drafts ? ' open' : '') + ' style="border:1px solid var(--line);border-radius:8px;padding:6px 10px;margin-bottom:6px"><summary><b>' + esc(m.title) + '</b> ' +
+        (drafts ? '<span class="chip c-warn">' + drafts + ' awaiting approval</span>' : '<span class="chip c-ok">approved</span>') + '</summary>' +
+        '<table style="margin-top:6px"><thead><tr><th>Parameter</th><th>Stage</th><th>Limit</th><th>Status</th><th></th></tr></thead><tbody>' + ls.map(function (l) {
+          return '<tr class="small"><td>' + esc(l.parameter) + '</td><td>' + esc(l.stage) + '</td><td>' + esc(limText(l)) + '</td><td>' + (l.status === 'DRAFT' ? '<span class="chip c-warn">Draft (' + esc(l.source) + ')</span>' : '<span class="chip c-ok">Approved</span><br>' + esc(l.approvedBy)) + '</td>' +
+            '<td style="white-space:nowrap">' + (isQA() ? '<button class="btn sm sec" onclick="editLimit(\'' + l.id + '\')">Edit</button> <button class="btn sm sec" onclick="retireLimit(\'' + l.id + '\')">Remove</button>' : '') + '</td></tr>';
+        }).join('') + '</tbody></table>' + (isQA() ? '<div class="row" style="margin-top:6px"><button class="btn sm sec" onclick="editLimit(null,\'' + m.id + '\')">+ Add limit</button>' +
+          (drafts ? '<button class="btn sm ok" onclick="approveLimits(\'' + m.id + '\')">Approve ' + drafts + ' draft limit(s)</button>' : '') + '</div>' : '') + '</details>';
+    }).join('') : '<p class="muted">No limits yet.</p>') + (none ? '<p class="small muted">' + none + ' master documents have no limits yet - click "Read limits from GMP documents".</p>' : '');
+  }).catch(function (e) { $('lim').innerHTML = '<div class="err">' + esc(e.message) + '</div>'; });
+}
+function limText(l) { if (l.limitType !== 'TEXT' && l.textSpec) return l.textSpec; return l.limitType === 'RANGE' ? l.low + ' - ' + l.high + ' ' + l.unit : l.limitType === 'MAX' ? 'NMT ' + l.high + ' ' + l.unit : l.limitType === 'MIN' ? 'NLT ' + l.low + ' ' + l.unit : l.textSpec; }
+function editLimit(id, masterId) {
+  var l = id ? LIM.limits.filter(function (x) { return x.id === id; })[0] : { masterId: masterId, parameter: '', stage: '', unit: '', limitType: 'RANGE', low: '', high: '', textSpec: '' };
+  var bg = openModal(mh(id ? 'Edit limit' : 'Add limit') + '<div class="grid2"><div><label class="f">Parameter</label><input type="text" id="el1" value="' + esc(l.parameter) + '"></div><div><label class="f">Stage / step</label><input type="text" id="el2" value="' + esc(l.stage) + '"></div>' +
+    '<div><label class="f">Type</label><select id="el3">' + [['RANGE', 'Range (low - high)'], ['MAX', 'NMT / maximum'], ['MIN', 'NLT / minimum'], ['TEXT', 'Descriptive']].map(function (o) { return '<option value="' + o[0] + '" ' + (l.limitType === o[0] ? 'selected' : '') + '>' + o[1] + '</option>'; }).join('') + '</select></div>' +
+    '<div><label class="f">Unit</label><input type="text" id="el4" value="' + esc(l.unit) + '"></div><div><label class="f">Low</label><input type="text" id="el5" value="' + esc(l.low) + '"></div><div><label class="f">High</label><input type="text" id="el6" value="' + esc(l.high) + '"></div></div>' +
+    '<label class="f" style="margin-top:8px">Limit as written</label><input type="text" id="el7" value="' + esc(l.textSpec) + '"><label class="f" style="margin-top:8px">Reason for change</label><input type="text" id="el8">' +
+    '<p class="small">Saved limits become drafts and must be approved before they are used.</p><div id="elerr"></div><div class="row" style="justify-content:flex-end"><button class="btn" id="elb">Save draft</button></div>');
+  $('elb').onclick = function () {
+    call('saveLimit', { id: id, masterId: l.masterId, parameter: $('el1').value, stage: $('el2').value, limitType: $('el3').value, unit: $('el4').value, low: $('el5').value, high: $('el6').value, textSpec: $('el7').value, reason: $('el8').value })
+      .then(function () { bg.remove(); drawLimits(); }).catch(function (e) { showErr('elerr', e); });
+  };
+}
+function retireLimit(id) { askText('Remove limit', 'Reason (recorded in the audit trail)').then(function (r) { if (r) call('saveLimit', { id: id, retire: true, reason: r }).then(drawLimits).catch(function (e) { toast(e.message); }); }); }
+function approveLimits(masterId) {
+  askText('Approve limits', 'Your password (electronic signature). Check every limit against the master document first.', { password: true }).then(function (pw) {
+    if (pw) call('approveLimits', { masterId: masterId, password: pw }).then(function (n) { toast(n + ' limits approved.'); drawLimits(); drawAiStatus(); }).catch(function (e) { toast(e.message); });
+  });
 }
 function drawImportLog() {
   call('importLog').then(function (log) {
