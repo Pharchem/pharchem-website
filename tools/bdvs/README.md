@@ -12,6 +12,9 @@ Reminders and escalations run every hour from Gmail, even when nobody is logged 
 |---|---|
 | `Code.gs` | Server: data, workflow rules, deadlines, reminders, audit trail, GMP folder index, production register |
 | `Checks.gs` | Automatic checks: limits from GMP documents, AI reading of scans, limit / trend / cross / date checks, monthly report |
+| `Backup.gs` | Weekly backup of the spreadsheet and all scans, with integrity verification |
+| `work-instructions.html` | Three printable one-page work instructions (Production, QC, QA) |
+| `pilot-metrics.md` | Pilot metric definitions, baseline capture sheet and go-live targets |
 | `Index.html` | The web page used by PRD, QC, QA and Admin |
 | `appsscript.json` | Project settings (IST time zone, web app runs as the deploying account) |
 
@@ -23,6 +26,7 @@ Do this signed in to the **QA Google account** that will own the data (e.g. the 
 2. **Add the code.** Extensions → Apps Script. Delete the sample code, then:
    - paste `Code.gs` into `Code.gs`;
    - **+ → Script**, name it `Checks`, paste `Checks.gs`;
+   - **+ → Script**, name it `Backup`, paste `Backup.gs`;
    - **+ → HTML**, name it `Index`, paste `Index.html`;
    - Project Settings (gear) → tick **Show "appsscript.json"**, open it and paste `appsscript.json`.
    - Save.
@@ -82,6 +86,29 @@ When the GMP folder changes (a new or revised BMR, STP or COA format), go to Set
 
 The register must be a **Google Sheet**, not an uploaded .xlsx. If Production works in Excel, open the file in Drive → *File → Save as Google Sheets*, and keep using that copy.
 
+## Backup and restore
+
+A timer runs every **Sunday at 02:00 IST** (also: sheet menu → *Run weekly backup now*, or Settings as admin):
+
+1. Copies the whole BDVS spreadsheet into the Drive folder **"BDVS Backups (do not edit)"**, keeping the last `BACKUP_KEEP` (default 8) weekly copies.
+2. Mirrors the scans folder there incrementally — scans never change, so only new files are copied.
+3. Verifies itself: row counts of the key sheets in the copy, and a SHA-256 spot check that backed-up scans still match the hash recorded at upload.
+4. Emails the admin and QA the result. **Treat anything other than SUCCESS as same-day work for the administrator.** QA's weekly duty: check that Sunday's email says SUCCESS.
+
+Set `BACKUP_SHARE_WITH` in Settings to a second Google account — it gets read access to the backup folder, so the data survives loss of the main account's password. For real disaster cover, that second account should every few months open the folder and use **Download** (or Google Takeout) to keep an offline copy.
+
+**Restore — a damaged or wrongly edited sheet tab** (the normal case):
+1. Open the newest "BDVS data …" copy in the backup folder and verify it has the data.
+2. In the backup copy: right-click the affected tab → **Copy to → Existing spreadsheet** → pick the live BDVS sheet.
+3. In the live sheet, delete the damaged tab and rename the copied one to the exact original name (e.g. `Batches`).
+4. Run *BDVS → Verify audit trail integrity*, and record the incident as a deviation.
+
+**Restore — a lost or corrupted scan:** find it under `BDVS Backups → scans → <batch>` and copy it back to the same place in *BDVS Scanned Documents*. Opening it in BDVS re-checks the SHA-256 automatically.
+
+**Disaster recovery — the whole sheet/account is gone:** make a copy of the newest backup sheet, open Extensions → Apps Script in the copy, paste the three `.gs` files and `Index.html`, run *Initial setup* (it keeps existing data), redeploy the web app and share the new link. Scans stay linked by file ID if the Drive account survived; otherwise restore the scans folder first. **Do a timed dry run of this once a year.**
+
+Note: after pasting updated code into an existing deployment, always run **BDVS → 1. Initial setup** once — it adds any new sheets, settings and timers without touching data.
+
 ## Data integrity notes
 
 - Every action is written to an **append-only audit trail** with a SHA-256 hash chain. *Audit trail → Verify integrity* (or BDVS menu → *Verify audit trail integrity*) detects any edited or deleted entry.
@@ -94,4 +121,4 @@ The register must be a **Google Sheet**, not an uploaded .xlsx. If Production wo
 
 ## Validation (CSV)
 
-Before GMP use, run IQ/OQ/PQ (or UAT) against URS-BDVS-001 §14. The deadline maths, reminders, versioning, audit trail, access control and closure rules are already covered by an automated test (108 checks) run during development. Repeat them as documented OQ test cases on your deployment.
+Before GMP use, run IQ/OQ/PQ (or UAT) against URS-BDVS-001 §14. The deadline maths, reminders, versioning, audit trail, access control and closure rules are already covered by an automated test (114 checks) run during development. Repeat them as documented OQ test cases on your deployment.

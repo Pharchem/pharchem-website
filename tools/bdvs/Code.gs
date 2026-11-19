@@ -157,6 +157,7 @@ function onOpen() {
     .addItem('Run reminders now', 'runReminders')
     .addItem('Read production register now', 'runDailyImport')
     .addItem('Run automatic checks now', 'runAiQueue')
+    .addItem('Run weekly backup now', 'runWeeklyBackup')
     .addItem('Set Claude API key', 'menuSetApiKey')
     .addItem('Verify audit trail integrity', 'menuVerifyAudit')
     .addItem('Reset admin password', 'menuResetAdmin')
@@ -245,6 +246,10 @@ function installTriggers() {
     if (t.getHandlerFunction() === 'runAiQueue') { ScriptApp.deleteTrigger(t); }
   });
   ScriptApp.newTrigger('runAiQueue').timeBased().everyMinutes(5).create();
+  ScriptApp.getProjectTriggers().forEach(function (t) {
+    if (t.getHandlerFunction() === 'runWeeklyBackup') { ScriptApp.deleteTrigger(t); }
+  });
+  ScriptApp.newTrigger('runWeeklyBackup').timeBased().onWeekDay(ScriptApp.WeekDay.SUNDAY).atHour(2).inTimezone('Asia/Kolkata').create();
 }
 
 function menuSetApiKey() {

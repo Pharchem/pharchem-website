@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BDVS Work Instructions</title>
+<style>
+  :root { --ink:#13233F; --mut:#4A5568; --line:#B9C3D4; --blue:#2F5BD3; --band:#E9EDF3; }
+  * { box-sizing: border-box; }
+  body { font-family: Arial, Helvetica, sans-serif; color: var(--ink); background:#EEF1F5; margin:0; font-size:12.5px; line-height:1.45; }
+  .toolbar { padding:12px 16px; background:#13233F; color:#fff; display:flex; gap:14px; align-items:center; }
+  .toolbar button { font:inherit; font-weight:bold; padding:8px 18px; border:0; border-radius:6px; background:#E8A33D; color:#13233F; cursor:pointer; }
+  .page { width:210mm; min-height:295mm; margin:16px auto; background:#fff; padding:14mm 16mm; box-shadow:0 2px 12px rgba(0,0,0,.18); page-break-after:always; }
+  table.doc { width:100%; border-collapse:collapse; margin-bottom:5mm; }
+  table.doc td { border:1px solid var(--ink); padding:4px 8px; font-size:11.5px; }
+  table.doc .t { font-size:15px; font-weight:bold; text-align:center; }
+  h1 { font-size:19px; margin:0 0 2mm; color:var(--blue); }
+  h2 { font-size:13.5px; margin:5mm 0 2mm; padding:3px 8px; background:var(--band); border-left:4px solid var(--blue); }
+  ol { margin:0; padding-left:20px; }
+  ol li { margin-bottom:4px; }
+  .warn { border:1.5px solid var(--blue); border-radius:6px; padding:8px 12px; margin-top:5mm; }
+  .warn b { color:var(--blue); }
+  .warn table { width:100%; border-collapse:collapse; font-size:12px; }
+  .warn td { padding:3px 6px 3px 0; vertical-align:top; }
+  .warn td:first-child { font-weight:bold; width:42%; }
+  .foot { margin-top:5mm; font-size:10.5px; color:var(--mut); border-top:1px solid var(--line); padding-top:2mm; }
+  .kbd { background:var(--band); border:1px solid var(--line); border-radius:4px; padding:0 5px; font-weight:bold; white-space:nowrap; }
+  .nb { color:#B42318; font-weight:bold; }
+  @media print { body { background:#fff; } .toolbar { display:none; } .page { margin:0; box-shadow:none; width:auto; min-height:auto; } @page { size:A4 portrait; margin:10mm; } }
+</style>
+</head>
+<body>
+<div class="toolbar"><b>BDVS Work Instructions</b> — three one-page sheets (Production, QC, QA)<button onclick="window.print()">Print / save as PDF</button></div>
+
+<!-- ============================ PAGE 1: PRODUCTION ============================ -->
+<div class="page">
+<table class="doc">
+<tr><td rowspan="2" style="width:24%;text-align:center;font-weight:bold">PHARCHEM PVT. LTD.</td><td class="t" rowspan="2">WORK INSTRUCTION<br>BDVS — PRODUCTION</td><td>Doc No.: PCF/QA/____</td></tr>
+<tr><td>Rev: 00 &nbsp; Effective: __.__.20__</td></tr>
+</table>
+<h1>Production: register, upload, hand over</h1>
+
+<h2>A &middot; Every evening — Daily Production &amp; Dispatch Register (Google Sheet)</h2>
+<ol>
+<li>Open the register sheet (bookmark on the department computer / phone).</li>
+<li>Add <b>one row per batch manufactured today</b>: Mfg Date, Batch No. (e.g. <span class="kbd">ALP/214(26-27)</span>), Customer. Product and Batch Size may be left blank.</li>
+<li>No production today? Add one row: today's date, Batch No. = <span class="kbd">NIL</span>.</li>
+<li>When a batch is dispatched, fill <b>Dispatch Date</b> and <b>Invoice / Challan No.</b> on that batch's <u>existing</u> row. Never add a second row for the same batch.</li>
+<li>Always write the customer's name the same way (e.g. "Dynemic Products Ltd").</li>
+<li>Do not touch the <b>BDVS Status</b> column — the system writes there at 8 PM. A row marked <span class="nb">ERROR:</span> must be corrected the same evening or next morning.</li>
+</ol>
+
+<h2>B &middot; Within 2 days of dispatch — upload the filled BMR/BPR</h2>
+<ol>
+<li>Scan the complete filled BMR/BPR: every page in order, including index, dispensing slips, IPQC checklist and all attachments. Check each page is legible.</li>
+<li>Log in to BDVS with <b>your own username</b> &rarr; <span class="kbd">My tasks</span> &rarr; <span class="kbd">Upload scan</span> on the batch.</li>
+<li>Attach the PDF (or phone photos — they are combined automatically). Enter the <b>total page count</b>, counted from the physical document.</li>
+<li>Type the <b>values recorded in the document</b> exactly as written (pH, pressure, yield…). Write <span class="kbd">NR</span> only if the value is genuinely not recorded.</li>
+<li>Fill the document details (mfg date, expiry, challan), tick all five checklist boxes, press <b>Upload</b>.</li>
+</ol>
+
+<h2>C &middot; If QA rejects — and after Verified OK</h2>
+<ol>
+<li>Rejected: open the task &rarr; <b>See observations</b> (page, severity, what is wrong) &rarr; correct the original as per GDP (single line, initial, date, reason) &rarr; <b>Re-upload corrected scan</b>. The old version stays on record.</li>
+<li>Verified OK: press <b>Print transmittal slip</b>, attach it to the original hardcopy, and hand it to QA <b>within 3 working days</b>.</li>
+</ol>
+
+<div class="warn"><b>If something goes wrong</b>
+<table>
+<tr><td>Forgot password / account locked</td><td>Ask the administrator to reset / unlock. Never use a colleague's login.</td></tr>
+<tr><td>Upload refused: "page count mismatch"</td><td>Recount the physical pages; rescan missing pages.</td></tr>
+<tr><td>Scanner down</td><td>Use phone photos — straight on, all 4 corners visible, good light.</td></tr>
+<tr><td>Deadline will be missed</td><td>Inform QA before the deadline; reminders escalate to management automatically.</td></tr>
+</table>
+</div>
+<p class="foot">BDVS link: ____________________ &nbsp;·&nbsp; Register link: ____________________ &nbsp;·&nbsp; Responsible: Production In-charge &nbsp;·&nbsp; Backup person: ____________</p>
+</div>
+
+<!-- ============================ PAGE 2: QC ============================ -->
+<div class="page">
+<table class="doc">
+<tr><td rowspan="2" style="width:24%;text-align:center;font-weight:bold">PHARCHEM PVT. LTD.</td><td class="t" rowspan="2">WORK INSTRUCTION<br>BDVS — QUALITY CONTROL</td><td>Doc No.: PCF/QA/____</td></tr>
+<tr><td>Rev: 00 &nbsp; Effective: __.__.20__</td></tr>
+</table>
+<h1>QC: upload the COA with raw data</h1>
+
+<h2>A &middot; Within 2 days of dispatch — upload COA + raw data</h2>
+<ol>
+<li>Assemble the complete analytical record for the batch: <b>COA</b>, raw data sheets / analytical protocols (chemical bulk &amp; finished, microbial), instrument printouts, calculations.</li>
+<li>Scan everything in order; check each page is legible, including printouts.</li>
+<li>Log in to BDVS with <b>your own username</b> &rarr; <span class="kbd">My tasks</span> &rarr; <span class="kbd">Upload scan</span> on the batch.</li>
+<li>Attach the PDF(s), enter the <b>total page count</b> counted from the physical record.</li>
+<li>Type the <b>test results exactly as on the COA</b> (pH, solid content, assay, lead…). Write <span class="kbd">NR</span> only if a result is genuinely not recorded. An out-of-specification entry does not block the upload — it alerts QA, as it should.</li>
+<li>Fill the document details (batch no. as printed, dates, customer), tick the checklist, press <b>Upload</b>.</li>
+</ol>
+
+<h2>B &middot; Outside / pending test reports (e.g. lead content)</h2>
+<ol>
+<li>If an outsourced result is still pending at upload, note it in <b>Remarks</b> and on the COA as per practice.</li>
+<li>When the report arrives, give it to QA for the batch file; QA records the reference in the system.</li>
+</ol>
+
+<h2>C &middot; If QA rejects — and after Verified OK</h2>
+<ol>
+<li>Rejected: open the task &rarr; <b>See observations</b> &rarr; correct per GDP &rarr; <b>Re-upload corrected scan</b> (new version; nothing is deleted).</li>
+<li>Verified OK: <b>Print transmittal slip</b> and hand the original COA + raw data to QA <b>within 3 working days</b>.</li>
+</ol>
+
+<div class="warn"><b>If something goes wrong</b>
+<table>
+<tr><td>A result the form asks for is not on this customer's COA</td><td>Write <span class="kbd">NR</span> and tell QA — the limit list for that customer may need correcting.</td></tr>
+<tr><td>The form does not ask for a test you report</td><td>Tell QA to add it under Settings &rarr; Limits.</td></tr>
+<tr><td>Forgot password / locked</td><td>Administrator resets it. Never share logins.</td></tr>
+<tr><td>Chromatogram / printout illegible in scan</td><td>Rescan at higher quality before uploading.</td></tr>
+</table>
+</div>
+<p class="foot">BDVS link: ____________________ &nbsp;·&nbsp; Responsible: QC In-charge &nbsp;·&nbsp; Backup person: ____________</p>
+</div>
+
+<!-- ============================ PAGE 3: QA ============================ -->
+<div class="page">
+<table class="doc">
+<tr><td rowspan="2" style="width:24%;text-align:center;font-weight:bold">PHARCHEM PVT. LTD.</td><td class="t" rowspan="2">WORK INSTRUCTION<br>BDVS — QUALITY ASSURANCE</td><td>Doc No.: PCF/QA/____</td></tr>
+<tr><td>Rev: 00 &nbsp; Effective: __.__.20__</td></tr>
+</table>
+<h1>QA: verify, receive hardcopy, close</h1>
+
+<h2>A &middot; Every morning</h2>
+<ol>
+<li>Open the <b>Dashboard</b>: red "Day" chips and overdue counts first. Chase anything past Day 2.</li>
+<li>Open the <b>Verification queue</b> — every upload must be decided <b>within 24 working hours</b> (Sundays/holidays excluded).</li>
+<li>Check last evening's register email: correct <span class="nb">ERROR</span> rows with Production; for a <b>new customer</b>, open the batch &rarr; <b>Change master documents</b> if the auto-match is wrong (it is remembered).</li>
+</ol>
+
+<h2>B &middot; Verifying a document</h2>
+<ol>
+<li>Open <b>Verify</b>: scan on the left; batch data, master documents and the <b>Automatic check</b> on the right.</li>
+<li>Work through the automatic check first: <span class="nb">OUT OF LIMIT</span> needs a Deviation/OOS no. (QAGE/025) + justification before acceptance; out-of-trend, date and cross-check flags need a written justification; misread/NR values — read the scan and press <b>Correct</b>.</li>
+<li>Answer every checklist item against the scan (N/A needs a reason). "No" on any item means Reject.</li>
+<li><b>Accept</b>, or <b>Reject</b> with page-wise observations (page, text, severity). Enter your password — it is your signature.</li>
+</ol>
+
+<h2>C &middot; Hardcopy and closure</h2>
+<ol>
+<li>On receipt: count pages against the verified scan, record condition and <b>storage location</b> (rack/file). A mismatch becomes a discrepancy and blocks closure until resolved.</li>
+<li>When both documents are verified and both originals received: open the batch &rarr; <b>Complete Batch Data Verification</b> (password). The record locks.</li>
+</ol>
+
+<h2>D &middot; Housekeeping (weekly / as needed)</h2>
+<ol>
+<li>Add declared holidays in Settings (keeps the 24-h and 3-day clocks honest).</li>
+<li>After any master BMR/STP/COA format change in the GMP folder: Settings &rarr; <b>Scan GMP folder</b>, then review &amp; approve the new limits.</li>
+<li>Check the Sunday backup email says <b>SUCCESS</b>; raise anything else with the administrator the same day.</li>
+<li>1st of the month: review the limits &amp; trend report email (APQR input).</li>
+</ol>
+
+<div class="warn"><b>Never</b>
+<table>
+<tr><td>Accept with an open out-of-limit flag</td><td>The system blocks it — record the deviation first.</td></tr>
+<tr><td>Share your password</td><td>It is your electronic signature on every decision.</td></tr>
+<tr><td>Edit the spreadsheet directly</td><td>All changes go through the app; the audit trail proves tampering.</td></tr>
+</table>
+</div>
+<p class="foot">BDVS link: ____________________ &nbsp;·&nbsp; Responsible: QA In-charge &nbsp;·&nbsp; Deputy: ____________</p>
+</div>
+</body>
+</html>
