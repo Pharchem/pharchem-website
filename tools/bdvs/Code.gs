@@ -678,7 +678,7 @@ function checkYmd_(ymd, raw) {
 // GMP document master (index of BMRs, STPs, specifications and COA formats)
 // ---------------------------------------------------------------------------
 
-var CUSTOMER_NOISE_ = /\b(ltd|limited|pvt|private|ok|pending|new|old|correction|extra|batch|size|kgs?|lab|labs|laboratories|healthcare|healthc|health|pharma|pharmaceuticals?|life|science|sciences|india|for|the|and|ip|bp|usp|ih)\b|\d+(\.\d+)?\s*%|\d{1,2}\.\d{1,2}\.\d{2,4}|\(\d+\)|[0-9]+\s*kgs?/gi;
+var CUSTOMER_NOISE_ = /\b(ltd|limited|pvt|private|ok|pending|new|old|correction|extra|batch|size|kgs?|lab|labs|laboratories|healthcare|healthc|health|pharma|pharmaceuticals?|drugs?|trader|traders|co|company|life|science|sciences|india|for|the|and|ip|bp|usp|ih)\b|\d+(\.\d+)?\s*%|\d{1,2}\.\d{1,2}\.\d{2,4}|\(\d+\)|[0-9]+\s*kgs?/gi;
 
 function customerKey_(name) {
   return String(name || '').toLowerCase().replace(/&/g, ' ').replace(CUSTOMER_NOISE_, ' ').replace(/[^a-z0-9]+/g, ' ').trim();
@@ -775,8 +775,27 @@ function apiGetDocMaster_() {
   return {
     docs: rows_('DocMaster').filter(function (d) { return d.active === 'Y'; }).map(strip_),
     profiles: rows_('CustomerProfiles').map(strip_),
+    customers: registerCustomers_(),
     folderId: setting_('GMP_FOLDER_ID')
   };
+}
+
+/** Customer names from the "Customers" tab of the production register (the same list Production picks from). */
+function registerCustomers_() {
+  var cache = CacheService.getScriptCache();
+  var hit = cache.get('reg_customers');
+  if (hit) { return JSON.parse(hit); }
+  var list = [];
+  try {
+    var id = sheetIdFrom_(setting_('PRODUCTION_SHEET_ID'));
+    var tab = id ? SpreadsheetApp.openById(id).getSheetByName('Customers') : null;
+    if (tab && tab.getLastRow() > 1) {
+      list = tab.getRange(2, 1, tab.getLastRow() - 1, 1).getValues()
+        .map(function (r) { return String(r[0]).trim(); }).filter(String);
+    }
+  } catch (e) { list = []; }
+  cache.put('reg_customers', JSON.stringify(list), 600);
+  return list;
 }
 
 /** Best master document of a kind for a customer: shared tokens with the file's customer hint, else "General". */
@@ -1421,6 +1440,12 @@ function apiCreateProductionSheet_(user, p) {
   sh.getRange('F2:F').setDataValidation(SpreadsheetApp.newDataValidation().requireDate().setAllowInvalid(false).build());
   sh.getRange('J2:J').setBackground('#f1f5f9');
   sh.protect().setDescription('Columns are used by BDVS').setWarningOnly(true);
+  var cust = nss.insertSheet('Customers');
+  cust.getRange(1, 1).setValue('Customer').setFontWeight('bold').setBackground('#dbeafe');
+  cust.setFrozenRows(1);
+  sh.getRange('E2:E').setDataValidation(SpreadsheetApp.newDataValidation()
+    .requireValueInRange(cust.getRange('A2:A500'), true).setAllowInvalid(false)
+    .setHelpText('Pick the customer from the list. New customer? Add the name to the Customers tab first.').build());
   var help = nss.insertSheet('How to fill');
   help.getRange(1, 1, 12, 1).setValues([
     ['DAILY PRODUCTION & DISPATCH REGISTER - read by BDVS every evening at ' + setting_('IMPORT_HOUR') + ':00 IST'],
@@ -1429,7 +1454,7 @@ function apiCreateProductionSheet_(user, p) {
     ['3. When the batch is dispatched, fill the Dispatch Date on the same row (do not add a new row). An Invoice / Challan No. column is optional.'],
     ['4. BDVS registers the batch on the evening the Dispatch Date is filled; PRD and QC then have 2 days from dispatch to upload the scans.'],
     ['5. Batch No. must start with ALP/ or MGP/ (e.g. ALP/214(26-27)); Product and Batch Size are taken from the BMR if left blank.'],
-    ['6. Customer: use the same name every time (e.g. Dynemic Products Ltd) so BDVS finds the right BMR, STP and COA format.'],
+    ['6. Customer: pick it from the drop-down list (the list is in the Customers tab). New customer? Add the name to the Customers tab first.'],
     ['7. Market and Site are optional (default: Domestic / Pharchem Pvt. Ltd.).'],
     ['8. Do not edit the BDVS Status column - BDVS writes the result there (Registered / Awaiting dispatch / ERROR ...).'],
     ['9. If a row shows ERROR, correct it; BDVS retries the next evening (or QA can press "Read now").'],
@@ -1444,6 +1469,7 @@ function apiCreateProductionSheet_(user, p) {
     splitEmails_(setting_('EMAIL_QC')).concat(splitEmails_(setting_('EMAIL_QA'))).forEach(function (e) { f.addViewer(e); });
   } catch (e) { /* sharing is optional */ }
   setSetting_('PRODUCTION_SHEET_ID', id);
+  CacheService.getScriptCache().remove('reg_customers');
   audit_(user, 'PRODUCTION_REGISTER_CREATED', 'Setting', 'PRODUCTION_SHEET_ID', '', existing, id, '', p.client);
   return { id: id, url: nss.getUrl() };
 }
@@ -1457,6 +1483,7 @@ function apiLinkProductionSheet_(user, p) {
   }
   var old = setting_('PRODUCTION_SHEET_ID');
   setSetting_('PRODUCTION_SHEET_ID', id);
+  CacheService.getScriptCache().remove('reg_customers');
   audit_(user, 'CONFIG_CHANGED', 'Setting', 'PRODUCTION_SHEET_ID', '', old, id + ' (' + name + ')', 'Production register linked', p.client);
   return { id: id, name: name };
 }

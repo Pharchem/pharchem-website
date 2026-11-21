@@ -1108,7 +1108,7 @@ function drawSingle() {
     '<div><label class="f">Batch number</label><input type="text" id="r2" placeholder="e.g. ALP/214(25-26)"></div>' +
     '<div><label class="f">Dispatch date</label><input type="date" id="r4" max="' + todayYmd() + '" value="' + todayYmd() + '"></div>' +
     '<div><label class="f">Customer / company</label><input type="text" id="r6" list="custl"><datalist id="custl">' +
-    uniqList(S.master.profiles.map(function (p) { return p.customer; })).map(function (c) { return '<option>' + esc(c) + '</option>'; }).join('') + '</datalist></div>' +
+    uniqList((S.master.customers || []).concat(S.master.profiles.map(function (p) { return p.customer; }))).map(function (c) { return '<option>' + esc(c) + '</option>'; }).join('') + '</datalist></div>' +
     '<div><label class="f">Invoice / challan no. (optional)</label><input type="text" id="r5"></div>' +
     '<div><label class="f">Product</label><select id="r1"><option value="">(from batch no.)</option><option value="ALP">' + PRODUCTS.ALP + '</option><option value="MGP">' + PRODUCTS.MGP + '</option></select></div>' +
     '<div><label class="f">Batch size</label><input type="text" id="r3" placeholder="auto from BMR"></div>' +
