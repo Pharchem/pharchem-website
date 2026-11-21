@@ -737,24 +737,34 @@ function apiImportDocMaster_(user, p) {
     }
   })(root, root.getName(), 0);
 
-  var existing = indexBy_(rows_('DocMaster'), 'fileId');
+  // All rows are written in two batch calls (one per row took minutes on a large GMP folder).
+  var all = rows_('DocMaster');
+  var existing = indexBy_(all, 'fileId');
   var now = iso_(Date.now());
   var seen = {};
-  var added = 0, updated = 0;
+  var added = 0, updated = 0, fresh = [];
   found.forEach(function (x) {
     var id = x.f.getId();
+    if (seen[id]) { return; }
     seen[id] = true;
     var rec = existing[id];
     var obj = { productCode: x.c.productCode, kind: x.c.kind, number: x.c.number, title: x.name.replace(/\.(docx?|pdf|xlsx?)$/i, ''),
-      customerHint: x.c.hint.trim(), batchSize: x.c.batchSize || '', fileId: id, url: x.f.getUrl(), folderPath: x.path,
+      customerHint: x.c.hint.trim(), batchSize: x.c.batchSize || '', fileId: id, url: 'https://drive.google.com/file/d/' + id + '/view', folderPath: x.path,
       active: 'Y', importedAt: now };
-    if (rec) { obj.id = rec.id; obj._row = rec._row; update_('DocMaster', obj); updated++; }
-    else { obj.id = newId_('M'); insert_('DocMaster', obj); added++; }
+    if (rec) { obj.id = rec.id; Object.keys(obj).forEach(function (k) { rec[k] = obj[k]; }); updated++; }
+    else { obj.id = newId_('M'); fresh.push(obj); added++; }
   });
   var retired = 0;
-  rows_('DocMaster').forEach(function (r) {
-    if (!seen[r.fileId] && r.active === 'Y') { r.active = 'N'; update_('DocMaster', r); retired++; }
+  all.forEach(function (r) {
+    if (!seen[r.fileId] && r.active === 'Y') { r.active = 'N'; retired++; }
   });
+  var ds = sh_('DocMaster'), dh = headers_('DocMaster');
+  if (all.length) { ds.getRange(2, 1, all.length, dh.length).setValues(all.map(function (r) { return toRow_('DocMaster', r); })); }
+  if (fresh.length) {
+    ds.getRange(all.length + 2, 1, fresh.length, dh.length).setNumberFormat('@')
+      .setValues(fresh.map(function (r) { return toRow_('DocMaster', r); }));
+  }
+  delete CACHE_['r_DocMaster'];
   audit_(user, 'DOC_MASTER_IMPORTED', 'DocMaster', folderId, '', '',
     found.length + ' documents (' + added + ' new, ' + updated + ' refreshed, ' + retired + ' no longer in folder)', '', p.client);
   return { total: found.length, added: added, updated: updated, retired: retired };
