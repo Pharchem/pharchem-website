@@ -145,11 +145,37 @@ function rpc(fn) {
 }
 function call(action, payload) {
   payload = Object.assign({ client: navigator.userAgent.slice(0, 150) }, payload || {});
+  if (isShared() && !payload.performedBy && S.who) payload.performedBy = S.who;
   return rpc('api', S.token, action, payload).then(function (r) {
     if (r.ok) { bumpIdle(); return r.data; }
     if (r.error === 'SESSION_EXPIRED') { endSession('Your session expired. Please log in again.'); }
     if (r.error === 'PASSWORD_CHANGE_REQUIRED') { renderChangePw(true); }
+    if (r.error === 'NAME_REQUIRED') { askWho(); throw new Error('Enter your name first (shared department login), then try again.'); }
     throw new Error(r.error);
+  });
+}
+/* ---- shared department logins: the person's name is recorded with every action ---- */
+var DEPT = { PRD: 'Production', QC: 'QC', QA: 'QA', ADMIN: 'Admin' };
+function isShared() { return !!(S.boot && S.boot.user && S.boot.user.shared); }
+function sigField(id) {
+  return isShared() ? '<label class="f" style="margin-top:8px">Your full name (signature on the shared ' + DEPT[S.boot.user.role] + ' login)</label><input type="text" id="' + id + '" autocomplete="off" placeholder="Type your own name">' : '';
+}
+function sigName(id) { return isShared() ? ($(id) ? $(id).value.replace(/\s+/g, ' ').trim() : '') : undefined; }
+function askWho() {
+  return new Promise(function (resolve) {
+    if ($('who_in')) return;
+    var bg = openModal('<div class="mh"><h2>Who is working?</h2></div><p>This is the shared <b>' + esc(DEPT[S.boot.user.role]) + '</b> login. Enter <b>your own name</b>; it is recorded with everything you do until you log out.</p>' +
+      '<label class="f">Your full name</label><input type="text" id="who_in" autocomplete="off"><div id="who_err"></div>' +
+      '<div class="row" style="justify-content:flex-end;margin-top:12px"><button class="btn sec" onclick="endSession()">Log out</button><button class="btn" id="who_ok">Continue</button></div>');
+    var ok = function () {
+      var v = $('who_in').value.replace(/\s+/g, ' ').trim();
+      if (!/^[A-Za-z][A-Za-z .'-]{2,39}$/.test(v)) { showErr('who_err', 'Enter your name using letters only (at least 3).'); return; }
+      S.who = v; try { sessionStorage.setItem('bdvs_who', v); } catch (e) {}
+      bg.remove(); renderShell(); renderNav(S.navCounts); resolve(v);
+    };
+    $('who_ok').onclick = ok;
+    $('who_in').onkeydown = function (e) { if (e.key === 'Enter') ok(); };
+    $('who_in').focus();
   });
 }
 function busy(btn, on, label) {
@@ -206,7 +232,8 @@ function bumpIdle() {
 
 function endSession(msg) {
   if (S.token) { rpc('logout', S.token).catch(function () {}); }
-  S.token = null; S.boot = null; S.dash = null; S.view = null; S.batch = null; S.master = null; S.navCounts = null;
+  S.token = null; S.boot = null; S.dash = null; S.view = null; S.batch = null; S.master = null; S.navCounts = null; S.who = null;
+  try { sessionStorage.removeItem('bdvs_who'); } catch (e) {}
   try { sessionStorage.removeItem('bdvs_t'); } catch (e) {}
   clearTimeout(S.idle); clearInterval(S.pollTimer);
   $('modals').innerHTML = '';
@@ -257,7 +284,9 @@ function start() {
   return call('bootstrap').then(function (b) {
     S.boot = b;
     if (b.user.mustChange) { renderShell(); renderChangePw(true); return; }
+    if (b.user.shared && !S.who) { try { S.who = sessionStorage.getItem('bdvs_who'); } catch (e) {} }
     renderShell();
+    if (b.user.shared && !S.who) { return askWho().then(function () { start(); }); }
     var first = { QA: 'dashboard', PRD: 'tasks', QC: 'tasks', ADMIN: 'dashboard' }[b.user.role];
     go(S.view && tabsFor().some(function (t) { return t[0] === S.view; }) ? S.view : first);
     clearInterval(S.pollTimer);
@@ -275,7 +304,8 @@ function tabsFor() {
 function renderShell() {
   var u = S.boot.user;
   $('app').innerHTML = '<header><div><div class="brand">' + esc(S.boot.company || 'BDVS') + '</div><div class="sub">Batch Document Verification System</div></div>' +
-    '<div class="sp"></div><div class="who">' + esc(u.name) + '<br><span class="sub">' + esc({ PRD: 'Production', QC: 'Quality Control', QA: 'Quality Assurance', ADMIN: 'Administrator' }[u.role]) + '</span></div>' +
+    '<div class="sp"></div><div class="who">' + (u.shared ? esc(S.who || '-') + '<br><span class="sub">' + esc(u.name) + ' (shared login)</span>' : esc(u.name) + '<br><span class="sub">' + esc({ PRD: 'Production', QC: 'Quality Control', QA: 'Quality Assurance', ADMIN: 'Administrator' }[u.role]) + '</span>') + '</div>' +
+    (u.shared ? '<button onclick="S.who=null;askWho()">Change person</button>' : '') +
     '<button onclick="renderChangePw(false)">Password</button><button onclick="endSession(\'You have logged out.\')">Log out</button></header>' +
     '<nav id="nav"></nav><main id="view"></main>';
   renderNav();
@@ -482,6 +512,7 @@ function openUpload(docId) {
     '<div id="upv"></div>' +
     '<h3>Upload checklist</h3>' + UPLOAD_CHECKS.map(function (c) { return '<label style="display:block;margin:5px 0"><input type="checkbox" class="upc" data-k="' + c[0] + '"> ' + c[1] + '</label>'; }).join('') +
     '<label class="f" style="margin-top:8px">Remarks (optional)</label><textarea id="upr"></textarea>' +
+    sigField('upsig') +
     '<div id="uperr"></div><div class="row" style="justify-content:flex-end;margin-top:12px"><button class="btn sec" onclick="closeModal(this)">Cancel</button><button class="btn" id="upb">Upload</button></div>');
   $('upf').onchange = function (e) { addFiles(e.target.files); };
   $('upb').onclick = submitUpload;
@@ -572,6 +603,7 @@ function submitUpload(confirmDuplicate) {
   var checks = {}; var all = true;
   document.querySelectorAll('.upc').forEach(function (c) { checks[c.dataset.k] = c.checked; if (!c.checked) all = false; });
   if (!all) return showErr('uperr', 'Confirm every item of the upload checklist.');
+  if (isShared() && !sigName('upsig')) return showErr('uperr', 'Type your name in the signature field.');
   var values = {}, header = {}, missingVals = [];
   document.querySelectorAll('.upval').forEach(function (i) { values[i.dataset.id] = i.value.trim(); if (!i.value.trim()) missingVals.push(i); });
   document.querySelectorAll('.uphdr').forEach(function (i) { if (i.value.trim()) header[i.dataset.k] = i.value.trim(); });
@@ -591,7 +623,7 @@ function submitUpload(confirmDuplicate) {
     })
     .then(function () {
       busy(b, false); busy(b, true, 'Uploading');
-      return call('upload', { docId: UP.docId, declaredPages: declared, checklist: checks, remarks: $('upr').value, files: out, confirmDuplicate: confirmDuplicate === true, values: values, header: header });
+      return call('upload', { docId: UP.docId, declaredPages: declared, checklist: checks, remarks: $('upr').value, files: out, confirmDuplicate: confirmDuplicate === true, values: values, header: header, performedBy: sigName('upsig') });
     })
     .then(function (r) {
       busy(b, false);
@@ -774,7 +806,7 @@ function openVerify(batchId, docId) {
       '<h3>Observations <span class="small">(required to reject)</span></h3><table class="obs"><thead><tr><th style="width:70px">Page</th><th>Observation</th><th style="width:110px">Severity</th><th></th></tr></thead><tbody id="obsb"></tbody></table>' +
       '<button class="btn sm sec" style="margin-top:4px" onclick="addObs()">+ Add observation</button>' +
       '<label class="f" style="margin-top:10px">Remarks</label><textarea id="vfr"></textarea>' +
-      '<label class="f" style="margin-top:8px">Your password (electronic signature)</label><input type="password" id="vfp" autocomplete="current-password">' +
+      sigField('vfsig') + '<label class="f" style="margin-top:8px">Your password (electronic signature)</label><input type="password" id="vfp" autocomplete="current-password">' +
       '<div id="vferr"></div><div class="row" style="justify-content:flex-end;margin-top:10px"><button class="btn bad" id="vfrej" onclick="decide(\'REJECT\')">Reject - return to ' + d.dept + '</button><button class="btn ok" id="vfacc" onclick="decide(\'ACCEPT\')">Accept - Verified OK</button></div>' +
       '</div></div>';
     new Viewer($('vw2'), v.id, v.files);
@@ -815,9 +847,10 @@ function decide(outcome) {
   if (checklist.some(function (c) { return c.answer === 'NA' && !c.comment.trim(); })) return showErr('vferr', 'Give a reason for every N/A answer.');
   var obs = VF.obs.filter(function (o) { return o.text.trim(); });
   if (outcome === 'REJECT' && !obs.length) return showErr('vferr', 'Add at least one observation (page, observation, severity) to reject.');
+  if (isShared() && !sigName('vfsig')) return showErr('vferr', 'Type your name to sign the decision.');
   if (!$('vfp').value) return showErr('vferr', 'Enter your password to sign the decision.');
   var btn = $(outcome === 'ACCEPT' ? 'vfacc' : 'vfrej'); busy(btn, true, 'Signing');
-  call('decide', { versionId: VF.v.id, outcome: outcome, checklist: checklist, observations: obs, remarks: $('vfr').value, password: $('vfp').value })
+  call('decide', { versionId: VF.v.id, outcome: outcome, checklist: checklist, observations: obs, remarks: $('vfr').value, password: $('vfp').value, performedBy: sigName('vfsig') })
     .then(function (r) {
       document.querySelectorAll('.modal-bg').forEach(function (m) { m.remove(); });
       toast((outcome === 'ACCEPT' ? 'Verified OK. Hardcopy requested from ' : 'Rejected and returned to ') + VF.d.dept + '. Time taken: ' + r.elapsedHours + ' working h' + (r.breach === 'Y' ? ' (24 h BREACHED)' : '') + '.');
@@ -958,11 +991,12 @@ function hardcopyDlg(docId) {
     '<div><label class="f">Storage location (file / rack / box no.)</label><input type="text" id="hc5"></div></div>' +
     '<label style="display:block;margin-top:10px"><input type="checkbox" id="hc6"> Hardcopy differs from the verified scan (content, signatures, pages)</label><textarea id="hc7" placeholder="Describe the discrepancy" style="margin-top:4px"></textarea>' +
     '<p class="small">A page-count mismatch is automatically recorded as a discrepancy and blocks batch closure until resolved.</p>' +
-    '<div id="hcerr"></div><div class="row" style="justify-content:flex-end"><button class="btn sec" onclick="closeModal(this)">Cancel</button><button class="btn" id="hcb">Save receipt</button></div>');
+    sigField('hcsig') + '<div id="hcerr"></div><div class="row" style="justify-content:flex-end"><button class="btn sec" onclick="closeModal(this)">Cancel</button><button class="btn" id="hcb">Save receipt</button></div>');
   $('hcb').onclick = function () {
+    if (isShared() && !sigName('hcsig')) return showErr('hcerr', 'Type your name in the signature field.');
     var b = $('hcb'); busy(b, true);
     call('recordHardcopy', { docId: docId, receivedFrom: $('hc1').value, receivedOn: $('hc2').value, pagesReceived: $('hc3').value, condition: $('hc4').value,
-      location: $('hc5').value, discrepancy: $('hc6').checked, discrepancyText: $('hc7').value })
+      location: $('hc5').value, discrepancy: $('hc6').checked, discrepancyText: $('hc7').value , performedBy: sigName('hcsig')})
       .then(function (r) { document.querySelectorAll('.modal-bg').forEach(function (m) { m.remove(); }); toast(r.status === 'HARDCOPY_RECEIVED' ? 'Hardcopy receipt recorded.' : 'Receipt recorded WITH DISCREPANCY - resolve it before closure.'); go(S.view); })
       .catch(function (e) { busy(b, false); showErr('hcerr', e); });
   };
@@ -993,11 +1027,12 @@ function printSlip(batchId, docId) {
 }
 function closeBatchDlg(batchId, batchNo) {
   var bg = openModal(mh('Complete Batch Data Verification') + '<p>You are completing Batch Data Verification for batch <b>' + esc(batchNo) + '</b>. Both scanned documents are verified, both originals are received, and there are no open discrepancies. The batch record will be <b>locked</b>.</p>' +
-    '<label class="f">Remarks (optional)</label><textarea id="cl1"></textarea><label class="f" style="margin-top:8px">Your password (electronic signature)</label><input type="password" id="cl2">' +
+    '<label class="f">Remarks (optional)</label><textarea id="cl1"></textarea>' + sigField('clsig') + '<label class="f" style="margin-top:8px">Your password (electronic signature)</label><input type="password" id="cl2">' +
     '<div id="clerr"></div><div class="row" style="justify-content:flex-end;margin-top:10px"><button class="btn sec" onclick="closeModal(this)">Cancel</button><button class="btn ok" id="clb">Complete &amp; close batch</button></div>');
   $('clb').onclick = function () {
     var b = $('clb'); busy(b, true, 'Signing');
-    call('closeBatch', { batchId: batchId, remarks: $('cl1').value, password: $('cl2').value }).then(function () {
+    if (isShared() && !sigName('clsig')) { busy(b, false); return showErr('clerr', 'Type your name to sign the closure.'); }
+    call('closeBatch', { batchId: batchId, remarks: $('cl1').value, password: $('cl2').value, performedBy: sigName('clsig') }).then(function () {
       document.querySelectorAll('.modal-bg').forEach(function (m) { m.remove(); }); toast('Batch Data Verification completed for ' + batchNo + '.'); go(S.view);
     }).catch(function (e) { busy(b, false); showErr('clerr', e); });
   };
@@ -1390,17 +1425,18 @@ function viewUsers(v) {
     v.innerHTML = '<h2>Users</h2><div class="card"><h3 style="margin-top:0">Add a user</h3><p class="small">One login per person. Department mailboxes receive notifications automatically; a personal email here also gets that department\'s reminders. Users are never deleted - disable them instead.</p>' +
       '<div class="grid2"><div><label class="f">Full name</label><input type="text" id="u1"></div><div><label class="f">Username</label><input type="text" id="u2" placeholder="e.g. rpatil"></div>' +
       '<div><label class="f">Email (optional)</label><input type="email" id="u3"></div><div><label class="f">Role</label><select id="u4"><option value="PRD">Production (uploads BMR / BPR)</option><option value="QC">QC (uploads COA + raw data)</option><option value="QA">QA (registers, verifies, closes)</option><option value="ADMIN">Administrator (users & settings only)</option></select></div></div>' +
+      '<label style="display:block;margin-top:10px"><input type="checkbox" id="u5"> <b>Shared department login</b> – everyone in the department uses it; it asks for the person\'s name at login and at every signature</label>' +
       '<div id="uerr"></div><div class="row" style="justify-content:flex-end;margin-top:10px"><button class="btn" id="ub">Create user</button></div></div>' +
       '<div class="tw"><table><thead><tr><th>Name</th><th>Username</th><th>Role</th><th>Email</th><th>Status</th><th>Created</th><th></th></tr></thead><tbody>' +
       users.map(function (u) {
         return '<tr style="' + (u.active ? '' : 'opacity:.55') + '"><td>' + esc(u.name) + '</td><td>' + esc(u.username) + '</td><td>' + esc(u.role) + '</td><td>' + esc(u.email) + '</td><td>' +
-          (u.active ? '<span class="chip c-ok">Active</span>' : '<span class="chip c-gray">Disabled</span>') + (u.locked ? ' <span class="chip c-bad">Locked</span>' : '') + (u.mustChange ? ' <span class="chip c-warn">Must change pw</span>' : '') +
+          (u.active ? '<span class="chip c-ok">Active</span>' : '<span class="chip c-gray">Disabled</span>') + (u.locked ? ' <span class="chip c-bad">Locked</span>' : '') + (u.mustChange ? ' <span class="chip c-warn">Must change pw</span>' : '') + (u.shared ? ' <span class="chip c-info">Shared login</span>' : '') +
           '</td><td class="small">' + fD(u.createdAt) + '<br>' + esc(u.createdBy) + '</td><td style="white-space:nowrap"><button class="btn sm sec" onclick="editUser(\'' + u.id + '\')">Edit</button> <button class="btn sm sec" onclick="resetPw(\'' + u.id + '\')">Reset password</button>' +
           (u.locked ? ' <button class="btn sm" onclick="userUpd(\'' + u.id + '\',{unlock:true})">Unlock</button>' : '') + '</td></tr>';
       }).join('') + '</tbody></table></div>';
     $('ub').onclick = function () {
       var b = $('ub'); busy(b, true);
-      call('createUser', { name: $('u1').value, username: $('u2').value, email: $('u3').value, role: $('u4').value }).then(function (r) {
+      call('createUser', { name: $('u1').value, username: $('u2').value, email: $('u3').value, role: $('u4').value, shared: $('u5').checked }).then(function (r) {
         busy(b, false); showTemp(r);
       }).catch(function (e) { busy(b, false); showErr('uerr', e); });
     };
@@ -1416,10 +1452,11 @@ function editUser(id) {
   var bg = openModal(mh('Edit ' + esc(u.username)) + '<div class="grid2"><div><label class="f">Full name</label><input type="text" id="e1" value="' + esc(u.name) + '"></div><div><label class="f">Email</label><input type="email" id="e2" value="' + esc(u.email) + '"></div>' +
     '<div><label class="f">Role</label><select id="e3">' + ['PRD', 'QC', 'QA', 'ADMIN'].map(function (r) { return '<option ' + (u.role === r ? 'selected' : '') + '>' + r + '</option>'; }).join('') + '</select></div>' +
     '<div><label class="f">Status</label><select id="e4"><option value="1" ' + (u.active ? 'selected' : '') + '>Active</option><option value="0" ' + (u.active ? '' : 'selected') + '>Disabled</option></select></div></div>' +
+    '<label style="display:block;margin-top:8px"><input type="checkbox" id="e6" ' + (u.shared ? 'checked' : '') + '> Shared department login (asks for the person\'s name)</label>' +
     '<label class="f" style="margin-top:8px">Reason for change</label><input type="text" id="e5"><div id="eerr"></div><div class="row" style="justify-content:flex-end;margin-top:10px"><button class="btn" id="eb">Save</button></div>');
   $('eb').onclick = function () {
     if (!$('e5').value.trim()) return showErr('eerr', 'Give a reason.');
-    call('updateUser', { id: id, name: $('e1').value, email: $('e2').value, role: $('e3').value, active: $('e4').value === '1', reason: $('e5').value })
+    call('updateUser', { id: id, name: $('e1').value, email: $('e2').value, role: $('e3').value, active: $('e4').value === '1', shared: $('e6').checked, reason: $('e5').value })
       .then(function () { bg.remove(); go('users'); }).catch(function (e) { showErr('eerr', e); });
   };
 }

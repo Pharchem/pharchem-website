@@ -36,7 +36,7 @@ var DOC_TYPES = {
 
 var SHEETS = Object.assign(typeof SHEETS !== 'undefined' && SHEETS ? SHEETS : {}, {
   Users: ['id', 'name', 'username', 'email', 'role', 'active', 'salt', 'pwHash', 'mustChange',
-    'pwChangedAt', 'failed', 'lockedUntil', 'createdAt', 'createdBy'],
+    'pwChangedAt', 'failed', 'lockedUntil', 'createdAt', 'createdBy', 'shared'],
   Batches: ['id', 'productCode', 'product', 'batchNo', 'batchSize', 'dispatchDate', 'invoiceNo', 'customer', 'market',
     'site', 'remarks', 'status', 'registeredAt', 'registeredBy', 'closedAt', 'closedBy', 'closeRemarks', 'masterDocs'],
   Documents: ['id', 'batchId', 'batchNo', 'product', 'type', 'dept', 'dueAt', 'status', 'currentVersion',
@@ -329,6 +329,17 @@ function api(token, action, payload) {
       throw new Error('PASSWORD_CHANGE_REQUIRED');
     }
     payload = payload || {};
+    // Shared department login: the person working must give their name; it is written into every record
+    // and audit entry as "Name (Department login)". Reads are allowed without it; writes are not.
+    if (user.shared === 'Y' && action !== 'changePassword') {
+      var who = String(payload.performedBy || '').replace(/\s+/g, ' ').trim();
+      if (who) {
+        if (!/^[A-Za-z][A-Za-z .'-]{2,39}$/.test(who)) { throw new Error('Enter your name using letters only (at least 3).'); }
+        user = Object.assign({}, user, { name: who + ' (' + user.name + ')', performedBy: who });
+      } else if (def.write) {
+        throw new Error('NAME_REQUIRED');
+      }
+    }
     var result = def.write ? withLock_(function () { return def.fn(user, payload); }) : def.fn(user, payload);
     return { ok: true, data: result };
   } catch (e) {
@@ -1173,7 +1184,7 @@ function apiListUsers_() {
 function apiCreateUser_(user, p) {
   var temp = tempPassword_();
   var u = createUserRecord_(p, temp, user.name);
-  audit_(user, 'USER_CREATED', 'User', u.id, '', '', u.name + ' (' + u.username + ', ' + u.role + ')', '', p.client);
+  audit_(user, 'USER_CREATED', 'User', u.id, '', '', u.name + ' (' + u.username + ', ' + u.role + (u.shared === 'Y' ? ', shared department login' : '') + ')', '', p.client);
   return { username: u.username, tempPassword: temp };
 }
 
@@ -1197,6 +1208,7 @@ function apiUpdateUser_(user, p) {
     if (u.id === user.id && p.active === false) { throw new Error('You cannot disable your own account.'); }
     u.active = p.active ? 'Y' : 'N';
   }
+  if (p.shared != null) { u.shared = p.shared ? 'Y' : 'N'; }
   if (p.unlock) { u.failed = '0'; u.lockedUntil = ''; }
   update_('Users', u);
   audit_(user, p.unlock ? 'USER_UNLOCKED' : 'USER_UPDATED', 'User', u.id, '', before, JSON.stringify(publicUser_(u)),
@@ -1864,7 +1876,7 @@ function createUserRecord_(p, password, by) {
   if (email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { throw new Error('Invalid email.'); }
   var u = { id: newId_('U'), name: req_(p.name, 'Full name'), username: username, email: email, role: p.role,
     active: 'Y', salt: '', pwHash: '', mustChange: 'Y', pwChangedAt: '', failed: '0', lockedUntil: '',
-    createdAt: iso_(Date.now()), createdBy: by };
+    createdAt: iso_(Date.now()), createdBy: by, shared: p.shared ? 'Y' : 'N' };
   setPassword_(u, password, true);
   insert_('Users', u);
   return u;
@@ -1902,7 +1914,7 @@ function tempPassword_() {
 
 function publicUser_(u) {
   return { id: u.id, name: u.name, username: u.username, email: u.email, role: u.role, active: u.active === 'Y',
-    mustChange: u.mustChange === 'Y' };
+    mustChange: u.mustChange === 'Y', shared: u.shared === 'Y' };
 }
 
 // ---------------------------------------------------------------------------
@@ -1996,7 +2008,14 @@ function sh_(name) {
 function headers_(name) {
   if (!CACHE_['h_' + name]) {
     var s = sh_(name);
-    CACHE_['h_' + name] = s.getRange(1, 1, 1, s.getLastColumn()).getValues()[0].map(String);
+    var h = s.getRange(1, 1, 1, s.getLastColumn()).getValues()[0].map(String);
+    // Columns added by a code update are appended automatically (existing data is never moved).
+    var missing = (SHEETS[name] || []).filter(function (k) { return h.indexOf(k) < 0; });
+    if (missing.length) {
+      s.getRange(1, h.length + 1, 1, missing.length).setValues([missing]);
+      h = h.concat(missing);
+    }
+    CACHE_['h_' + name] = h;
   }
   return CACHE_['h_' + name];
 }
