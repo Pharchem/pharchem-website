@@ -1367,13 +1367,20 @@ function loadLimitDoc(mid) {
     if (!box) return;
     var ls = r.limits.sort(function (a, b) { return a.order - b.order; });
     var drafts = ls.filter(function (l) { return l.status === 'DRAFT'; }).length;
+    var desc = ls.filter(function (l) { return l.status === 'DRAFT' && l.limitType === 'TEXT' && l.stage !== 'INFO'; }).length;
     box.className = 'limbody';
     box.innerHTML = '<table style="margin-top:6px"><thead><tr><th>Parameter</th><th>Stage</th><th>Limit</th><th>Status</th><th></th></tr></thead><tbody>' + ls.map(function (l) {
       return '<tr class="small"><td>' + esc(l.parameter) + '</td><td>' + esc(l.stage) + '</td><td>' + esc(limText(l)) + '</td><td>' + (l.status === 'DRAFT' ? '<span class="chip c-warn">Draft (' + esc(l.source) + ')</span>' : '<span class="chip c-ok">Approved</span>') + '</td>' +
         '<td style="white-space:nowrap">' + (isQA() ? '<button class="btn sm sec" onclick="editLimit(\'' + l.id + '\',\'' + mid + '\')">Edit</button> <button class="btn sm sec" onclick="retireLimit(\'' + l.id + '\',\'' + mid + '\')">Remove</button>' : '') + '</td></tr>';
     }).join('') + '</tbody></table>' + (isQA() ? '<div class="row" style="margin-top:6px"><button class="btn sm sec" onclick="editLimit(null,\'' + mid + '\')">+ Add limit</button>' +
+      (desc ? '<button class="btn sm sec" onclick="retireDescriptive(\'' + mid + '\',' + desc + ')">Remove ' + desc + ' descriptive line(s)</button>' : '') +
       (drafts ? '<button class="btn sm ok" onclick="approveLimits(\'' + mid + '\')">Approve ' + drafts + ' draft limit(s)</button>' : '') + '</div>' : '');
   }).catch(function (e) { toast(e.message); });
+}
+function retireDescriptive(mid, n) {
+  askText('Remove ' + n + ' descriptive lines', 'Reason (recorded in the audit trail), e.g. "Descriptive - checked on paper during BMR review"').then(function (r) {
+    if (r) call('retireDescriptive', { masterId: mid, reason: r }).then(function (k) { toast(k + ' descriptive lines removed.'); LIMOPEN[mid] = true; drawLimits(); }).catch(function (e) { toast(e.message); });
+  });
 }
 function limText(l) { if (l.limitType !== 'TEXT' && l.textSpec) return l.textSpec; return l.limitType === 'RANGE' ? l.low + ' - ' + l.high + ' ' + l.unit : l.limitType === 'MAX' ? 'NMT ' + l.high + ' ' + l.unit : l.limitType === 'MIN' ? 'NLT ' + l.low + ' ' + l.unit : l.textSpec; }
 function editLimit(id, masterId) {

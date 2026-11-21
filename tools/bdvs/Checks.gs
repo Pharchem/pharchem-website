@@ -484,6 +484,22 @@ function apiSaveLimit_(user, p) {
   return rec.id;
 }
 
+/** Removes (retires) all descriptive draft limits of one document in one step, with one reason. */
+function apiRetireDescriptive_(user, p) {
+  var reason = req_(p.reason, 'Reason');
+  var now = iso_(Date.now());
+  var list = rows_('Limits').filter(function (l) {
+    return l.masterId === p.masterId && l.status === 'DRAFT' && l.limitType === 'TEXT' && l.stage !== 'INFO';
+  });
+  if (!list.length) { throw new Error('No descriptive draft limits in this document.'); }
+  list.forEach(function (l) { l.status = 'RETIRED'; l.updatedAt = now; });
+  updateMany_('Limits', list);
+  audit_(user, 'LIMITS_RETIRED_DESCRIPTIVE', 'DocMaster', p.masterId, '', list.map(function (l) { return l.parameter; }).join('; '),
+    list.length + ' descriptive draft limits removed from ' + list[0].masterTitle, reason, p.client);
+  return list.length;
+}
+ACTIONS.retireDescriptive = { roles: ['QA'], fn: apiRetireDescriptive_, write: true };
+
 /** Approves all draft limits of one master document (electronic signature). */
 function apiApproveLimits_(user, p) {
   if (hashPw_(p.password, user.salt) !== user.pwHash) { throw new Error('Password incorrect.'); }
