@@ -88,7 +88,8 @@ var DEFAULT_SETTINGS = Object.assign(typeof DEFAULT_SETTINGS !== 'undefined' && 
   APP_URL: ['', 'Web app URL used in email links (filled automatically when possible)'],
   GMP_FOLDER_ID: ['', 'Google Drive ID of the GMP folder (BMRs, STPs, specifications, COA formats) used to auto-fill batch documents'],
   PRODUCTION_SHEET_ID: ['', 'Google Sheet ID of the Daily Production & Dispatch Register filled by Production every evening'],
-  IMPORT_HOUR: ['20', 'Hour (IST, 0-23) at which the production register is read and dispatched batches are registered'],
+  REGISTER_MAX_AGE_DAYS: ['7', 'Production register rows dispatched more than this many days ago are not registered automatically (0 = no limit)'],
+  IMPORT_HOUR: ['20','Hour (IST, 0-23) at which the production register is read and dispatched batches are registered'],
   REGISTER_MISSING_ALERT: ['YES', 'YES = alert Production and QA if no row was entered for a working day (enter NIL when there is no production)']
 });
 
@@ -1129,7 +1130,7 @@ function apiSaveSetting_(user, p) {
       if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e.trim())) { throw new Error('Invalid email: ' + e); }
     });
   }
-  if (['UPLOAD_DAYS', 'VERIFY_HOURS', 'VERIFY_REMINDER_HOURS', 'REUPLOAD_REMINDER_HOURS', 'HARDCOPY_DAYS',
+  if (['UPLOAD_DAYS', 'VERIFY_HOURS', 'VERIFY_REMINDER_HOURS', 'REUPLOAD_REMINDER_HOURS', 'HARDCOPY_DAYS', 'REGISTER_MAX_AGE_DAYS',
     'DAILY_REMINDER_HOUR', 'MAX_FILE_MB', 'SESSION_TIMEOUT_MIN', 'PASSWORD_EXPIRY_DAYS', 'LOCKOUT_ATTEMPTS']
     .indexOf(p.key) >= 0 && !/^\d+$/.test(value)) { throw new Error('Enter a whole number.'); }
   if (p.key === 'UPLOAD_DAYS_MODE' && ['CALENDAR', 'WORKING'].indexOf(value) < 0) { throw new Error('Use CALENDAR or WORKING.'); }
@@ -1534,9 +1535,14 @@ function importProductionRegister_(user, client) {
       var disp = '';
       var rawDisp = get(row, 'dispatchDate');
       try { disp = cellYmd_(rawDisp); } catch (e) { status = 'ERROR: dispatch date "' + rawDisp + '" not understood (use DD.MM.YYYY)'; }
+      var maxAge = Number(setting_('REGISTER_MAX_AGE_DAYS'));
       if (!status && !disp) {
         res.awaiting.push({ row: r + 1, batchNo: batchNo, customer: String(get(row, 'customer')), mfgDate: mfg });
         status = 'Awaiting dispatch (manufactured' + (mfg ? ' ' + fmtDate_(ymdToMs_(mfg, 12)) : '') + ')';
+      } else if (!status && maxAge > 0 && ymdToMs_(disp, 12) < now - maxAge * DAY) {
+        // Old rows (back data) would register as overdue at once and escalate every morning.
+        res.skippedOld = (res.skippedOld || 0) + 1;
+        status = 'Not registered: dispatched more than ' + maxAge + ' days ago (old record). QA can register it by hand if needed.';
       } else if (!status) {
         try {
           var out = registerOne_(actor, { batchNo: batchNo, product: get(row, 'product'), batchSize: String(get(row, 'batchSize') || ''),
