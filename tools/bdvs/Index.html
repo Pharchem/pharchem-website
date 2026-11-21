@@ -1270,7 +1270,7 @@ function viewSettings(v) {
       (admin ? '<div class="row" style="margin-top:10px"><button class="btn sm sec" id="tst">Send test email to departments</button><span class="small">Emails left today (Google quota): ' + (s.remainingEmailQuota == null ? '?' : s.remainingEmailQuota) + '</span></div>' : '') + '</div>' +
       '<div class="card"><h3 style="margin-top:0">Automatic checks</h3><p class="small">Values are checked against the approved limits, trend, BMR/COA/dispatch and dates. <b>VALUE_SOURCE = FORM</b> (default, free): PRD / QC type the key values while uploading. <b>AI</b>: Claude reads them from the scan (API key needed; model in AI_MODEL). The API key is also used once to read the limits from the GMP documents and can be removed afterwards.</p><div id="aist" class="small"><span class="spin"></span></div>' +
       (admin ? '<div class="row" style="margin-top:8px"><input type="password" id="aik" placeholder="Anthropic API key (sk-ant-...)" style="max-width:360px" autocomplete="off"><button class="btn sm sec" id="aikb">Save API key</button></div>' : '') +
-      '<div class="row" style="margin-top:8px"><button class="btn sm" id="aiq">Read limits from GMP documents</button><button class="btn sm sec" id="air">Run queue now</button></div>' +
+      '<div class="row" style="margin-top:8px"><button class="btn sm" id="aiq">Read limits from GMP documents</button><button class="btn sm sec" id="aiv">AI double-check draft limits</button><button class="btn sm sec" id="air">Run queue now</button></div>' +
       '<h3>Limits <span class="small">(read from the master BMR / specification / COA format; QA approves each document\'s limits once)</span></h3><div id="lim"></div></div>' +
       '<div class="card"><h3 style="margin-top:0">Daily Production &amp; Dispatch Register</h3><p class="small">Production adds one row per batch every evening (Mfg Date, Batch No., Customer...) and fills <b>Dispatch Date</b> and <b>Invoice / Challan No.</b> when the batch leaves. BDVS reads the sheet every evening, registers dispatched batches automatically, writes the result in the <b>BDVS Status</b> column and emails QA a summary.</p>' +
       '<div class="row"><input type="text" id="psl" placeholder="Link of the Google Sheet" value="' + esc((s.settings.filter(function (x) { return x.key === 'PRODUCTION_SHEET_ID'; })[0] || {}).value ? 'https://docs.google.com/spreadsheets/d/' + (s.settings.filter(function (x) { return x.key === 'PRODUCTION_SHEET_ID'; })[0] || {}).value + '/edit' : '') + '" style="max-width:460px">' +
@@ -1305,6 +1305,7 @@ function viewSettings(v) {
     drawImportLog();
     drawAiStatus(); drawLimits();
     if ($('aikb')) $('aikb').onclick = function () { call('setApiKey', { key: $('aik').value }).then(function () { $('aik').value = ''; toast('API key saved.'); drawAiStatus(); }).catch(function (e) { toast(e.message); }); };
+    $('aiv').onclick = function () { var b = this; busy(b, true); call('queueLimitVerify', {}).then(function (r) { busy(b, false); toast(r.queued + ' documents queued for the double-check - results appear within about an hour.'); drawAiStatus(); }).catch(function (e) { busy(b, false); toast(e.message); }); };
     $('aiq').onclick = function () { var b = this; busy(b, true); call('queueLimitExtraction', {}).then(function (r) { busy(b, false); toast(r.queued + ' documents queued - limits appear as drafts within about an hour.'); drawAiStatus(); }).catch(function (e) { busy(b, false); toast(e.message); }); };
     $('air').onclick = function () { var b = this; busy(b, true); call('runAiNow', {}).then(function () { busy(b, false); drawAiStatus(); drawLimits(); }).catch(function (e) { busy(b, false); toast(e.message); }); };
     $('hb').onclick = function () { call('addHoliday', { date: $('hd').value, name: $('hn').value }).then(function () { toast('Holiday added.'); go('settings'); }).catch(function (e) { toast(e.message); }); };
@@ -1322,7 +1323,7 @@ function drawAiStatus() {
       (a.recentFailures.length ? '<br><span style="color:var(--bad)">Recent failures: ' + a.recentFailures.map(function (j) { return esc(j.error); }).join('; ') + '</span>' : '');
   }).catch(function () {});
 }
-var LIM = null, LIMDOC = {}, LIMOPEN = {};
+var LIM = null, LIMDOC = {}, LIMOPEN = {}, LIMSEL = {};
 function drawLimits() {
   call('getLimits').then(function (r) {
     LIM = r;
@@ -1331,8 +1332,14 @@ function drawLimits() {
     var nd = withL.filter(function (m) { return m.draft; }).length;
     if (!$('limq')) {
       $('lim').innerHTML = '<div class="row" style="margin-bottom:8px"><input type="text" id="limq" placeholder="Search customer or document (e.g. Dynemic, BMR-21)" style="max-width:340px">' +
-        '<select id="limf" style="max-width:220px"><option value="DRAFT">Awaiting approval</option><option value="APPROVED">Approved</option><option value="">All documents</option></select>' +
-        '<select id="limp" style="max-width:140px"><option value="">ALP + MGP</option><option value="ALP">ALP</option><option value="MGP">MGP</option></select></div><div id="limsum" class="small" style="margin-bottom:6px"></div><div id="limlist"></div>';
+        '<select id="limf" style="max-width:260px"><option value="DRAFT">Awaiting approval</option><option value="AGREE">Awaiting approval - AI check agrees</option><option value="REVIEW">Awaiting approval - to review</option><option value="APPROVED">Approved</option><option value="">All documents</option></select>' +
+        '<select id="limp" style="max-width:140px"><option value="">ALP + MGP</option><option value="ALP">ALP</option><option value="MGP">MGP</option></select></div><div id="limsum" class="small" style="margin-bottom:6px"></div>' +
+        (isQA() ? '<div class="row" id="limbar" style="margin-bottom:6px"><label class="small"><input type="checkbox" id="limall"> Select all shown that can be approved</label><button class="btn sm ok" id="limapp" disabled>Approve selected (0)</button></div>' : '') +
+        '<div id="limlist"></div>';
+      if (isQA()) {
+        $('limall').onchange = function () { var on = this.checked; Array.prototype.forEach.call(document.querySelectorAll('#limlist .limsel'), function (c) { if (!c.disabled) { c.checked = on; LIMSEL[c.value] = on; } }); limSelCount(); };
+        $('limapp').onclick = approveSelected;
+      }
       $('limq').oninput = drawLimitList; $('limf').onchange = drawLimitList; $('limp').onchange = drawLimitList;
     }
     $('limsum').innerHTML = withL.length + ' documents with limits: <b>' + nd + '</b> awaiting approval, ' + (withL.length - nd) + ' approved.' +
@@ -1346,15 +1353,22 @@ function drawLimitList() {
   var ms = LIM.masters.filter(function (m) {
     if (!(m.draft + m.approved)) return false;
     if (f === 'DRAFT' && !m.draft) return false;
+    if (f === 'AGREE' && !(m.draft && m.checked === m.draft && !m.issues)) return false;
+    if (f === 'REVIEW' && !(m.draft && (m.issues || m.checked < m.draft))) return false;
     if (f === 'APPROVED' && (m.draft || !m.approved)) return false;
     if (pc && m.productCode !== pc) return false;
     return !q || (m.title + ' ' + m.customerHint + ' ' + m.kind).toLowerCase().indexOf(q) >= 0;
   }).sort(function (a, b) { return a.title.localeCompare(b.title, undefined, { numeric: true }); });
   var shown = ms.slice(0, 60);
   $('limlist').innerHTML = (shown.length ? shown.map(function (m) {
-    return '<details data-m="' + m.id + '"' + (LIMOPEN[m.id] ? ' open' : '') + ' style="border:1px solid var(--line);border-radius:8px;padding:6px 10px;margin-bottom:6px"><summary><b>' + esc(m.title) + '</b> <span class="small muted">' + esc(m.kind) + '</span> ' +
-      (m.draft ? '<span class="chip c-warn">' + m.draft + ' awaiting approval</span>' : '<span class="chip c-ok">' + m.approved + ' approved</span>') + '</summary><div class="limbody small muted">Loading...</div></details>';
+    var canSel = isQA() && m.draft && !m.issues;
+    var ai = !m.draft ? '' : m.issues ? '<span class="chip c-bad">AI check: ' + m.issues + ' to review</span>' : m.checked === m.draft ? '<span class="chip c-ok">AI check: all ' + m.checked + ' agree</span>' : m.checked ? '<span class="chip c-gray">AI check: ' + m.checked + ' of ' + m.draft + '</span>' : '';
+    return '<div style="display:flex;gap:8px;align-items:flex-start">' + (isQA() ? '<input type="checkbox" class="limsel" value="' + m.id + '" style="margin-top:12px;width:auto"' + (canSel ? '' : ' disabled title="Open the document and resolve the differences first"') + (canSel && LIMSEL[m.id] ? ' checked' : '') + '>' : '') +
+      '<details data-m="' + m.id + '"' + (LIMOPEN[m.id] ? ' open' : '') + ' style="flex:1;min-width:0;border:1px solid var(--line);border-radius:8px;padding:6px 10px;margin-bottom:6px"><summary><b>' + esc(m.title) + '</b> <span class="small muted">' + esc(m.kind) + '</span> ' +
+      (m.draft ? '<span class="chip c-warn">' + m.draft + ' awaiting approval</span>' : '<span class="chip c-ok">' + m.approved + ' approved</span>') + ' ' + ai + '</summary><div class="limbody small muted">Loading...</div></details></div>';
   }).join('') : '<p class="muted">No documents match.</p>') + (ms.length > shown.length ? '<p class="small muted">' + (ms.length - shown.length) + ' more - type in the search box to narrow the list.</p>' : '');
+  Array.prototype.forEach.call(document.querySelectorAll('#limlist .limsel'), function (c) { c.onchange = function () { LIMSEL[c.value] = c.checked; limSelCount(); }; });
+  if ($('limall')) { $('limall').checked = false; limSelCount(); }
   Array.prototype.forEach.call(document.querySelectorAll('#limlist details'), function (d) {
     d.addEventListener('toggle', function () { LIMOPEN[d.getAttribute('data-m')] = d.open; if (d.open) loadLimitDoc(d.getAttribute('data-m')); });
     if (d.open) loadLimitDoc(d.getAttribute('data-m'));
@@ -1369,13 +1383,35 @@ function loadLimitDoc(mid) {
     var drafts = ls.filter(function (l) { return l.status === 'DRAFT'; }).length;
     var desc = ls.filter(function (l) { return l.status === 'DRAFT' && l.limitType === 'TEXT' && l.stage !== 'INFO'; }).length;
     box.className = 'limbody';
-    box.innerHTML = '<table style="margin-top:6px"><thead><tr><th>Parameter</th><th>Stage</th><th>Limit</th><th>Status</th><th></th></tr></thead><tbody>' + ls.map(function (l) {
-      return '<tr class="small"><td>' + esc(l.parameter) + '</td><td>' + esc(l.stage) + '</td><td>' + esc(limText(l)) + '</td><td>' + (l.status === 'DRAFT' ? '<span class="chip c-warn">Draft (' + esc(l.source) + ')</span>' : '<span class="chip c-ok">Approved</span>') + '</td>' +
+    box.innerHTML = '<table style="margin-top:6px"><thead><tr><th>Parameter</th><th>Stage</th><th>Limit</th><th>AI double-check</th><th>Status</th><th></th></tr></thead><tbody>' + ls.map(function (l) {
+      var v = l.status !== 'DRAFT' ? '' : l.verify === 'MATCH' ? '<span class="chip c-ok">agrees</span>' : l.verify === 'MISMATCH' ? '<span class="chip c-bad">differs</span> ' + esc(l.verifyNote ? 'Document: ' + l.verifyNote : '') :
+        l.verify === 'NOT_FOUND' ? '<span class="chip c-bad">not found in document</span>' : l.verify === 'ADDED' ? '<span class="chip c-warn">added by double-check</span>' : '<span class="muted">-</span>';
+      return '<tr class="small"' + (/MISMATCH|NOT_FOUND|ADDED/.test(l.verify || '') && l.status === 'DRAFT' ? ' style="background:var(--badb)"' : '') + '><td>' + esc(l.parameter) + '</td><td>' + esc(l.stage) + '</td><td>' + esc(limText(l)) + '</td><td>' + v + '</td><td>' + (l.status === 'DRAFT' ? '<span class="chip c-warn">Draft (' + esc(l.source) + ')</span>' : '<span class="chip c-ok">Approved</span>') + '</td>' +
         '<td style="white-space:nowrap">' + (isQA() ? '<button class="btn sm sec" onclick="editLimit(\'' + l.id + '\',\'' + mid + '\')">Edit</button> <button class="btn sm sec" onclick="retireLimit(\'' + l.id + '\',\'' + mid + '\')">Remove</button>' : '') + '</td></tr>';
     }).join('') + '</tbody></table>' + (isQA() ? '<div class="row" style="margin-top:6px"><button class="btn sm sec" onclick="editLimit(null,\'' + mid + '\')">+ Add limit</button>' +
       (desc ? '<button class="btn sm sec" onclick="retireDescriptive(\'' + mid + '\',' + desc + ')">Remove ' + desc + ' descriptive line(s)</button>' : '') +
       (drafts ? '<button class="btn sm ok" onclick="approveLimits(\'' + mid + '\')">Approve ' + drafts + ' draft limit(s)</button>' : '') + '</div>' : '');
   }).catch(function (e) { toast(e.message); });
+}
+function limSelCount() {
+  if (!LIM) return [];
+  var ids = Object.keys(LIMSEL).filter(function (k) { return LIMSEL[k] && LIM.masters.some(function (m) { return m.id === k && m.draft && !m.issues; }); });
+  if ($('limapp')) { $('limapp').textContent = 'Approve selected (' + ids.length + ')'; $('limapp').disabled = !ids.length; }
+  return ids;
+}
+function approveSelected() {
+  var ids = limSelCount();
+  if (!ids.length) return;
+  var ms = LIM.masters.filter(function (m) { return ids.indexOf(m.id) >= 0; });
+  var n = ms.reduce(function (a, m) { return a + m.draft; }, 0), unchecked = ms.filter(function (m) { return m.checked < m.draft; }).length;
+  askText('Approve ' + ids.length + ' documents (' + n + ' limits)', 'I have reviewed these documents' + (unchecked ? ' (' + unchecked + ' of them are NOT double-checked by AI)' : '') + '. Your password (electronic signature):', { password: true }).then(function (pw) {
+    if (!pw) return;
+    call('approveLimitsMany', { masterIds: ids, password: pw }).then(function (r) {
+      ids.forEach(function (k) { delete LIMSEL[k]; });
+      toast(r.approved + ' documents approved (' + r.limits + ' limits).' + (r.skipped.length ? ' Skipped: ' + r.skipped.map(function (x) { return x.title + ' - ' + x.reason; }).join('; ') : ''));
+      drawLimits(); drawAiStatus();
+    }).catch(function (e) { toast(e.message); });
+  });
 }
 function retireDescriptive(mid, n) {
   askText('Remove ' + n + ' descriptive lines', 'Reason (recorded in the audit trail), e.g. "Descriptive - checked on paper during BMR review"').then(function (r) {

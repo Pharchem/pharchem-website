@@ -23,7 +23,7 @@ var DEFAULT_SETTINGS = (typeof DEFAULT_SETTINGS !== 'undefined' && DEFAULT_SETTI
 var ACTIONS = (typeof ACTIONS !== 'undefined' && ACTIONS) || {};
 
 SHEETS.Limits = ['id', 'masterId', 'masterTitle', 'productCode', 'kind', 'parameter', 'stage', 'unit', 'limitType',
-  'low', 'high', 'textSpec', 'order', 'status', 'source', 'approvedBy', 'approvedAt', 'updatedAt'];
+  'low', 'high', 'textSpec', 'order', 'status', 'source', 'approvedBy', 'approvedAt', 'updatedAt', 'verify', 'verifyNote'];
 SHEETS.AiJobs = ['id', 'kind', 'refId', 'batchId', 'status', 'apiBatchId', 'createdAt', 'submittedAt', 'doneAt',
   'error', 'inputTokens', 'outputTokens'];
 SHEETS.Results = ['id', 'versionId', 'docId', 'batchId', 'productCode', 'customer', 'docType', 'parameter', 'stage',
@@ -46,6 +46,8 @@ ACTIONS.runAiNow = { roles: ['QA', 'ADMIN'], fn: function () { runAiQueue_(); re
 ACTIONS.getLimits = { roles: ['QA', 'ADMIN'], fn: apiGetLimits_ };
 ACTIONS.saveLimit = { roles: ['QA'], fn: apiSaveLimit_, write: true };
 ACTIONS.approveLimits = { roles: ['QA'], fn: apiApproveLimits_, write: true };
+ACTIONS.approveLimitsMany = { roles: ['QA'], fn: apiApproveLimitsMany_, write: true };
+ACTIONS.queueLimitVerify = { roles: ['QA', 'ADMIN'], fn: apiQueueLimitVerify_, write: true };
 ACTIONS.getChecks = { roles: ['QA', 'PRD', 'QC'], fn: apiGetChecks_ };
 ACTIONS.correctResult = { roles: ['QA'], fn: apiCorrectResult_, write: true };
 ACTIONS.resolveFinding = { roles: ['QA'], fn: apiResolveFinding_, write: true };
@@ -158,7 +160,7 @@ function submitPending_() {
   var requests = [], used = [], bytes = 0;
   pending.forEach(function (j) {
     try {
-      var params = j.kind === 'LIMITS' ? limitsRequest_(j) : scanRequest_(j);
+      var params = j.kind === 'LIMITS' ? limitsRequest_(j) : j.kind === 'LIMITS_VERIFY' ? verifyRequest_(j) : scanRequest_(j);
       var size = JSON.stringify(params).length;
       if (bytes + size > 150 * 1024 * 1024) { return; } // stay well under the batch size limit; rest next run
       bytes += size;
@@ -188,6 +190,7 @@ function pollBatches_() {
     subs.filter(function (j) { return j.apiBatchId === bid; }).forEach(function (j) {
       cacheReset_();
       var job = findById_('AiJobs', j.id);
+      if (!job || job.status !== 'SUBMITTED') { return; } // already handled by an overlapping run
       var r = byId[j.id];
       try {
         if (!r) { throw new Error('No result returned'); }
@@ -199,7 +202,7 @@ function pollBatches_() {
         var data = JSON.parse(text);
         job.inputTokens = String(msg.usage ? msg.usage.input_tokens : '');
         job.outputTokens = String(msg.usage ? msg.usage.output_tokens : '');
-        if (job.kind === 'LIMITS') { storeLimits_(job.refId, data); } else { storeScan_(job.refId, data); }
+        if (job.kind === 'LIMITS') { storeLimits_(job.refId, data); } else if (job.kind === 'LIMITS_VERIFY') { storeVerify_(job.refId, data); } else { storeScan_(job.refId, data); }
         job.status = 'DONE';
       } catch (e) {
         job.status = 'FAILED'; job.error = String(e.message || e);
@@ -254,6 +257,96 @@ function limitsRequest_(job) {
     'For RANGE/MAX/MIN also copy the limit as written into textSpec. Units go in unit (e.g. %, % w/w, ppm, PSI, ml, kg). Give shelfLifeMonths if a shelf life is stated, else null.',
     [{ type: 'text', text: 'Document: ' + d.title + '\nProduct: ' + PRODUCTS[d.productCode] + '\n\n' + what + '\n\n<document>\n' + text + '\n</document>' }],
     setting_('LIMITS_MODEL') || 'claude-opus-5-5');
+}
+
+// ---- AI double-check of draft limits (a second, independent reading) ----
+
+var VERIFY_SCHEMA_ = {
+  type: 'object', additionalProperties: false, required: ['checks', 'missing'],
+  properties: {
+    checks: { type: 'array', items: { type: 'object', additionalProperties: false, required: ['id', 'verdict', 'documentSays'],
+      properties: { id: { type: 'string' }, verdict: { type: 'string', enum: ['MATCH', 'MISMATCH', 'NOT_FOUND'] }, documentSays: { type: 'string' } } } },
+    missing: LIMITS_SCHEMA_.properties.parameters
+  }
+};
+
+function apiQueueLimitVerify_(user, p) {
+  if (!apiKey_()) { throw new Error('Set the Claude API key first (Settings, administrator).'); }
+  var need = {};
+  rows_('Limits').forEach(function (l) { if (l.status === 'DRAFT' && (p.all || !l.verify)) { need[l.masterId] = true; } });
+  var ids = Object.keys(need).filter(function (id) { return !p.masterIds || p.masterIds.indexOf(id) >= 0; });
+  ids.forEach(function (id) { queueJob_('LIMITS_VERIFY', id, ''); });
+  audit_(user, 'LIMIT_DOUBLE_CHECK_QUEUED', 'Limits', '', '', '', ids.length + ' documents queued for the AI double-check of draft limits', '', p.client);
+  return { queued: ids.length };
+}
+
+function verifyRequest_(job) {
+  var d = findById_('DocMaster', job.refId);
+  if (!d) { throw new Error('Master document no longer exists'); }
+  var drafts = rows_('Limits').filter(function (l) { return l.masterId === d.id && l.status === 'DRAFT'; });
+  if (!drafts.length) { throw new Error('No draft limits left to check'); }
+  var list = drafts.map(function (l) {
+    return { id: l.id, parameter: l.parameter, stage: l.stage, unit: l.unit, limitType: l.limitType, low: l.low, high: l.high, limitAsWritten: l.textSpec };
+  });
+  var text = masterText_(d.fileId);
+  return baseParams_('medium', VERIFY_SCHEMA_,
+    'You independently verify acceptance limits that were read from a pharmaceutical GMP master document. For EACH listed limit, find it in the document and compare it exactly: parameter, stage/step, numbers, unit and limit type (NLT/NMT/range). ' +
+    'verdict MATCH only if the document states exactly this limit. MISMATCH if the document states a different value, unit, type or step - put exactly what the document says in documentSays. NOT_FOUND if the document does not contain it. ' +
+    'For MATCH, documentSays may be empty. In "missing", list numeric acceptance limits written in the document that are absent from the list (empty array if none). Never invent limits.',
+    [{ type: 'text', text: 'Document: ' + d.title + '\nProduct: ' + PRODUCTS[d.productCode] + '\nKind: ' + d.kind + '\n\nLimits to verify (JSON):\n' + JSON.stringify(list) + '\n\n<document>\n' + text + '\n</document>' }],
+    setting_('LIMITS_MODEL') || 'claude-opus-5-5');
+}
+
+function storeVerify_(masterId, data) {
+  var d = findById_('DocMaster', masterId);
+  var drafts = indexBy_(rows_('Limits').filter(function (l) { return l.masterId === masterId && l.status === 'DRAFT'; }), 'id');
+  var now = iso_(Date.now());
+  var changed = [], c = { MATCH: 0, MISMATCH: 0, NOT_FOUND: 0 };
+  (data.checks || []).forEach(function (k) {
+    var l = drafts[k.id];
+    if (!l) { return; }
+    l.verify = k.verdict; l.verifyNote = k.verdict === 'MATCH' ? '' : String(k.documentSays || '').slice(0, 300); l.updatedAt = now;
+    c[k.verdict] = (c[k.verdict] || 0) + 1;
+    changed.push(l);
+  });
+  updateMany_('Limits', changed);
+  var start = rows_('Limits').filter(function (l) { return l.masterId === masterId; }).length;
+  var added = (data.missing || []).map(function (p, i) {
+    return { id: newId_('L'), masterId: masterId, masterTitle: d.title, productCode: d.productCode, kind: d.kind,
+      parameter: p.parameter, stage: p.stage || '', unit: p.unit || '', limitType: p.limitType,
+      low: p.low == null ? '' : String(p.low), high: p.high == null ? '' : String(p.high), textSpec: p.textSpec || '',
+      order: String(start + i + 1), status: 'DRAFT', source: 'AI check', approvedBy: '', approvedAt: '', updatedAt: now,
+      verify: 'ADDED', verifyNote: 'Found only by the double-check - not in the first reading' };
+  });
+  insertMany_('Limits', added);
+  audit_(null, 'LIMITS_DOUBLE_CHECKED', 'DocMaster', masterId, '', '', d.title + ': ' + c.MATCH + ' agree, ' + c.MISMATCH + ' differ, ' +
+    c.NOT_FOUND + ' not found, ' + added.length + ' added', '', '');
+}
+
+/** Approves the draft limits of several documents with one electronic signature. Documents with
+ *  unresolved double-check differences are skipped - QA opens and resolves those one by one. */
+function apiApproveLimitsMany_(user, p) {
+  if (hashPw_(p.password, user.salt) !== user.pwHash) { throw new Error('Password incorrect.'); }
+  var ids = (p.masterIds || []).slice(0, 200);
+  if (!ids.length) { throw new Error('Select at least one document.'); }
+  var all = rows_('Limits');
+  var now = iso_(Date.now());
+  var toWrite = [], done = [], skipped = [];
+  ids.forEach(function (mid) {
+    var drafts = all.filter(function (l) { return l.masterId === mid && l.status === 'DRAFT'; });
+    if (!drafts.length) { return; }
+    var open = drafts.filter(function (l) { return l.verify === 'MISMATCH' || l.verify === 'NOT_FOUND' || l.verify === 'ADDED'; });
+    if (open.length) { skipped.push({ title: drafts[0].masterTitle, reason: open.length + ' limit(s) to review' }); return; }
+    drafts.forEach(function (l) { l.status = 'APPROVED'; l.approvedBy = user.name; l.approvedAt = now; l.updatedAt = now; toWrite.push(l); });
+    done.push({ id: mid, title: drafts[0].masterTitle, n: drafts.length,
+      checked: drafts.filter(function (l) { return l.verify === 'MATCH'; }).length });
+  });
+  updateMany_('Limits', toWrite);
+  done.forEach(function (x) {
+    audit_(user, 'LIMITS_APPROVED', 'DocMaster', x.id, '', '', x.n + ' limits approved for ' + x.title + ' (' + x.checked + ' confirmed by AI double-check; approved together with ' +
+      (done.length - 1) + ' other document(s))', '', p.client);
+  });
+  return { approved: done.length, limits: toWrite.length, skipped: skipped };
 }
 
 /** Text of a .doc / .docx / Google Doc / PDF master document (converted through a temporary Google Doc). */
@@ -444,12 +537,17 @@ function apiGetLimits_(user, p) {
   }
   var cnt = {};
   lim.forEach(function (l) {
-    var c = cnt[l.masterId] = cnt[l.masterId] || { draft: 0, approved: 0 };
-    if (l.status === 'DRAFT') { c.draft++; } else if (l.status === 'APPROVED') { c.approved++; }
+    var c = cnt[l.masterId] = cnt[l.masterId] || { draft: 0, approved: 0, checked: 0, issues: 0 };
+    if (l.status === 'DRAFT') {
+      c.draft++;
+      if (l.verify) { c.checked++; }
+      if (l.verify === 'MISMATCH' || l.verify === 'NOT_FOUND' || l.verify === 'ADDED') { c.issues++; }
+    } else if (l.status === 'APPROVED') { c.approved++; }
   });
   var masters = rows_('DocMaster').filter(function (d) { return d.active === 'Y' && d.kind !== 'STP'; }).map(function (d) {
-    var c = cnt[d.id] || { draft: 0, approved: 0 };
-    return { id: d.id, title: d.title, kind: d.kind, productCode: d.productCode, customerHint: d.customerHint, draft: c.draft, approved: c.approved };
+    var c = cnt[d.id] || { draft: 0, approved: 0, checked: 0, issues: 0 };
+    return { id: d.id, title: d.title, kind: d.kind, productCode: d.productCode, customerHint: d.customerHint, draft: c.draft, approved: c.approved,
+      checked: c.checked, issues: c.issues };
   });
   return { masters: masters };
 }
