@@ -43,7 +43,12 @@ DEFAULT_SETTINGS.TREND_BATCHES = ['30', 'Number of previous accepted batches use
 ACTIONS.aiStatus = { roles: ['QA', 'ADMIN'], fn: apiAiStatus_ };
 ACTIONS.setApiKey = { roles: ['ADMIN'], fn: apiSetApiKey_, write: true };
 ACTIONS.queueLimitExtraction = { roles: ['QA', 'ADMIN'], fn: apiQueueLimitExtraction_, write: true };
-ACTIONS.runAiNow = { roles: ['QA', 'ADMIN'], fn: function () { runAiQueue_(); return apiAiStatus_(); }, write: false };
+ACTIONS.runAiNow = { roles: ['QA', 'ADMIN'], fn: function () {
+  var lock = LockService.getScriptLock();
+  if (!lock.tryLock(5000)) { throw new Error('The automatic checks are already running - try again in a few minutes.'); }
+  try { runAiQueue_(); } finally { lock.releaseLock(); }
+  return apiAiStatus_();
+}, write: false };
 ACTIONS.getLimits = { roles: ['QA', 'ADMIN'], fn: apiGetLimits_ };
 ACTIONS.saveLimit = { roles: ['QA'], fn: apiSaveLimit_, write: true };
 ACTIONS.approveLimits = { roles: ['QA'], fn: apiApproveLimits_, write: true };

@@ -1093,7 +1093,7 @@ function viewRegister(v) {
   return loadMaster().then(function () {
     var n = S.master.docs.length;
     v.innerHTML = '<h2>Register dispatched batches</h2>' +
-      (n ? '<p class="muted">Enter what Production gives you: <b>batch no., dispatch date and customer</b> (plus invoice / challan). The product comes from the batch no. (ALP/... or MGP/...) and the <b>BMR, STP, specification, COA format and batch size</b> are filled in from the GMP folder (' + n + ' master documents indexed). Confirm them once per customer and they are remembered.</p>'
+      (n ? '<p class="muted">Enter what Production gives you: <b>batch no., dispatch date and customer</b> (invoice / challan optional). The product comes from the batch no. (ALP/... or MGP/...) and the <b>BMR, STP, specification, COA format and batch size</b> are filled in from the GMP folder (' + n + ' master documents indexed). Confirm them once per customer and they are remembered.</p>'
         : '<div class="err">The GMP folder has not been indexed yet, so documents cannot be auto-filled. Go to Settings &gt; GMP document master &gt; "Scan GMP folder".</div>') +
       '<p class="small">Upload deadline = dispatch date + ' + S.boot.config.uploadDays + ' days, 23:59 IST (moved to the next working day if it falls on a Sunday or holiday). PRD and QC are emailed immediately.</p>' +
       '<div class="row" style="margin-bottom:10px"><button class="btn sm" id="tab1">Single batch</button><button class="btn sm sec" id="tab2">Bulk: paste list from Production</button></div>' +
@@ -1109,7 +1109,7 @@ function drawSingle() {
     '<div><label class="f">Dispatch date</label><input type="date" id="r4" max="' + todayYmd() + '" value="' + todayYmd() + '"></div>' +
     '<div><label class="f">Customer / company</label><input type="text" id="r6" list="custl"><datalist id="custl">' +
     uniqList(S.master.profiles.map(function (p) { return p.customer; })).map(function (c) { return '<option>' + esc(c) + '</option>'; }).join('') + '</datalist></div>' +
-    '<div><label class="f">Invoice / challan no.</label><input type="text" id="r5"></div>' +
+    '<div><label class="f">Invoice / challan no. (optional)</label><input type="text" id="r5"></div>' +
     '<div><label class="f">Product</label><select id="r1"><option value="">(from batch no.)</option><option value="ALP">' + PRODUCTS.ALP + '</option><option value="MGP">' + PRODUCTS.MGP + '</option></select></div>' +
     '<div><label class="f">Batch size</label><input type="text" id="r3" placeholder="auto from BMR"></div>' +
     '<div><label class="f">Market</label><select id="r7"><option>Domestic</option><option>Export</option></select></div>' +
@@ -1153,7 +1153,7 @@ function uniqList(a) { var o = {}; return a.filter(function (x) { var k = String
 var BULK = [];
 function drawBulk() {
   $('regbody').innerHTML = '<div class="card"><p>Copy the rows from Production\'s Excel sheet / message and paste below - one batch per line. Columns (tab or comma separated, in this order):</p>' +
-    '<p><code>Batch No. | Dispatch date | Customer | Invoice / challan no. | Batch size (optional)</code></p>' +
+    '<p><code>Batch No. | Dispatch date | Customer | Invoice / challan no. (optional) | Batch size (optional)</code></p>' +
     '<p class="small">Dates as DD.MM.YYYY, DD/MM/YYYY or DD-MMM-YYYY. A header row is ignored. Product, BMR, STP, specification, COA format and batch size are filled in automatically - check the preview before registering.</p>' +
     '<textarea id="bk" style="min-height:140px;font-family:monospace" placeholder="ALP/214(25-26)\t19.11.2026\tDynemic Products Ltd\tINV-1234\nMGP/101(26-27)\t19.11.2026\tAbbott India\tCH-556"></textarea>' +
     '<div class="row" style="margin-top:8px"><select id="bk7" style="max-width:180px"><option value="">Market: remembered / Domestic</option><option>Domestic</option><option>Export</option></select>' +
@@ -1240,7 +1240,7 @@ function viewAudit(v) {
   $('av').onclick = function () {
     $('avr').innerHTML = '<span class="spin"></span>';
     call('verifyAudit').then(function (r) {
-      $('avr').innerHTML = r.ok ? '<span class="chip c-ok">Intact - ' + r.count + ' entries</span>' : '<span class="chip c-bad">Problem at entry ' + esc(r.badSeq) + ': ' + esc(r.reason) + '</span>';
+      $('avr').innerHTML = r.ok ? '<span class="chip c-ok">Intact - ' + r.count + ' entries</span>' + (r.notes && r.notes.length ? ' <span class="small">' + r.notes.map(esc).join(' ') + '</span>' : '') : '<span class="chip c-bad">Problem at entry ' + esc(r.badSeq) + ': ' + esc(r.reason) + '</span>';
     }).catch(function (e) { $('avr').textContent = e.message; });
   };
   return load();

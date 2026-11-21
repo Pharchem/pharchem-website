@@ -263,7 +263,7 @@ function menuSetApiKey() {
 
 function menuVerifyAudit() {
   var r = verifyAuditChain_();
-  SpreadsheetApp.getUi().alert(r.ok ? 'Audit trail OK: ' + r.count + ' entries, hash chain intact.'
+  SpreadsheetApp.getUi().alert(r.ok ? 'Audit trail OK: ' + r.count + ' entries, hash chain intact.' + (r.notes && r.notes.length ? '\nNote: ' + r.notes.join(' ') : '')
     : 'AUDIT TRAIL PROBLEM at entry ' + r.badSeq + ': ' + r.reason);
 }
 
@@ -580,7 +580,7 @@ function registerOne_(user, p) {
     batchNo: req_(p.batchNo, 'Batch number'),
     batchSize: String(p.batchSize || '').trim(),
     dispatchDate: normDate_(req_(p.dispatchDate, 'Dispatch date')),
-    invoiceNo: req_(p.invoiceNo, 'Invoice / challan number'),
+    invoiceNo: String(p.invoiceNo || '').trim(), // optional
     customer: req_(p.customer, 'Customer / destination'),
     market: String(p.market || '').trim(),
     site: String(p.site || '').trim() || 'Pharchem Pvt. Ltd.',
@@ -1384,7 +1384,7 @@ function monthlyReportMail_(now) {
 // ---------------------------------------------------------------------------
 
 var REGISTER_COLUMNS = ['Mfg Date', 'Batch No.', 'Product', 'Batch Size', 'Customer', 'Dispatch Date',
-  'Invoice / Challan No.', 'Market', 'Site', 'Remarks', 'BDVS Status'];
+  'Market', 'Site', 'Remarks', 'BDVS Status'];
 
 // Header text -> field. Matching is case/space-insensitive so Production can rename or reorder columns.
 var REGISTER_HEADER_MAP = [
@@ -1414,19 +1414,19 @@ function apiCreateProductionSheet_(user, p) {
   sh.getRange('B2:B').setNumberFormat('@');
   sh.getRange('C2:C').setDataValidation(SpreadsheetApp.newDataValidation()
     .requireValueInList([PRODUCTS.ALP, PRODUCTS.MGP], true).setAllowInvalid(true).build());
-  sh.getRange('H2:H').setDataValidation(SpreadsheetApp.newDataValidation().requireValueInList(['Domestic', 'Export'], true).build());
-  sh.getRange('I2:I').setDataValidation(SpreadsheetApp.newDataValidation()
+  sh.getRange('G2:G').setDataValidation(SpreadsheetApp.newDataValidation().requireValueInList(['Domestic', 'Export'], true).build());
+  sh.getRange('H2:H').setDataValidation(SpreadsheetApp.newDataValidation()
     .requireValueInList(['Pharchem Pvt. Ltd.', 'Enicar Pharmaceuticals Pvt. Ltd.'], true).build());
   sh.getRange('A2:A').setDataValidation(SpreadsheetApp.newDataValidation().requireDate().setAllowInvalid(false).build());
   sh.getRange('F2:F').setDataValidation(SpreadsheetApp.newDataValidation().requireDate().setAllowInvalid(false).build());
-  sh.getRange('K2:K').setBackground('#f1f5f9');
+  sh.getRange('J2:J').setBackground('#f1f5f9');
   sh.protect().setDescription('Columns are used by BDVS').setWarningOnly(true);
   var help = nss.insertSheet('How to fill');
   help.getRange(1, 1, 12, 1).setValues([
     ['DAILY PRODUCTION & DISPATCH REGISTER - read by BDVS every evening at ' + setting_('IMPORT_HOUR') + ':00 IST'],
     ['1. Every evening add one row per batch manufactured today: Mfg Date, Batch No., Product, Batch Size, Customer.'],
     ['2. If there was no production today, add one row with Mfg Date = today and Batch No. = NIL.'],
-    ['3. When the batch is dispatched, fill Dispatch Date and Invoice / Challan No. on the same row (do not add a new row).'],
+    ['3. When the batch is dispatched, fill the Dispatch Date on the same row (do not add a new row). An Invoice / Challan No. column is optional.'],
     ['4. BDVS registers the batch on the evening the Dispatch Date is filled; PRD and QC then have 2 days from dispatch to upload the scans.'],
     ['5. Batch No. must start with ALP/ or MGP/ (e.g. ALP/214(26-27)); Product and Batch Size are taken from the BMR if left blank.'],
     ['6. Customer: use the same name every time (e.g. Dynemic Products Ltd) so BDVS finds the right BMR, STP and COA format.'],
@@ -1938,6 +1938,15 @@ function publicUser_(u) {
 // ---------------------------------------------------------------------------
 
 function audit_(user, action, objectType, objectId, batchNo, oldValue, newValue, reason, client) {
+  // Two writers must never read the same "last entry" (that would give two entries the same number).
+  var lock = LockService.getScriptLock();
+  var mine = !(lock.hasLock && lock.hasLock());
+  if (mine && !lock.tryLock(30000)) { throw new Error('The system is busy. Please try again.'); }
+  try { auditUnlocked_(user, action, objectType, objectId, batchNo, oldValue, newValue, reason, client); }
+  finally { if (mine) { lock.releaseLock(); } }
+}
+
+function auditUnlocked_(user, action, objectType, objectId, batchNo, oldValue, newValue, reason, client) {
   var sh = sh_('AuditLog');
   var last = sh.getLastRow();
   var prevHash = '', seq = 1;
@@ -1961,14 +1970,21 @@ function auditHash_(e) {
 
 function verifyAuditChain_() {
   var rows = rows_('AuditLog');
-  var prev = '';
+  var prev = '', notes = [];
   for (var i = 0; i < rows.length; i++) {
     var r = rows[i];
-    if (String(r.prevHash) !== prev) { return { ok: false, count: rows.length, badSeq: r.seq, reason: 'chain link broken (entry deleted or inserted)' }; }
     if (auditHash_(r) !== String(r.hash)) { return { ok: false, count: rows.length, badSeq: r.seq, reason: 'entry content altered' }; }
+    if (String(r.prevHash) !== prev) {
+      // Known pattern from before writes were serialised: two entries written at the same moment both
+      // chain to the same predecessor and carry the same number. Nothing is missing or altered.
+      var p = rows[i - 1];
+      var fork = p && String(p.seq) === String(r.seq) && String(r.prevHash) === String(p.prevHash);
+      if (!fork) { return { ok: false, count: rows.length, badSeq: r.seq, reason: 'chain link broken (entry deleted or inserted)' }; }
+      notes.push('Entry ' + r.seq + ' appears twice (two actions recorded at the same moment, ' + p.timestamp + ' and ' + r.timestamp + '); both entries are intact.');
+    }
     prev = String(r.hash);
   }
-  return { ok: true, count: rows.length };
+  return { ok: true, count: rows.length, notes: notes };
 }
 
 // ---------------------------------------------------------------------------
