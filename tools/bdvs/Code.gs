@@ -344,15 +344,15 @@ function login(username, password, client) {
       var u = rows_('Users').filter(function (x) { return String(x.username).toLowerCase() === username; })[0];
       var now = Date.now();
       if (!u) {
-        audit_(null, 'LOGIN_FAILED', 'User', '', '', '', 'Unknown username: ' + username, client);
+        audit_(null, 'LOGIN_FAILED', 'User', '', '', '', 'Unknown username: ' + username, '', client);
         throw new Error('Invalid username or password.');
       }
       if (u.active !== 'Y') {
-        audit_(u, 'LOGIN_FAILED', 'User', u.id, '', '', 'Account disabled', client);
+        audit_(u, 'LOGIN_FAILED', 'User', u.id, '', '', 'Account disabled', '', client);
         throw new Error('This account is disabled. Contact the administrator.');
       }
       if (u.lockedUntil && Number(u.lockedUntil) > now) {
-        audit_(u, 'LOGIN_FAILED', 'User', u.id, '', '', 'Account locked', client);
+        audit_(u, 'LOGIN_FAILED', 'User', u.id, '', '', 'Account locked', '', client);
         throw new Error('Account locked after repeated failed logins. Ask the administrator to unlock it.');
       }
       if (hashPw_(password, u.salt) !== u.pwHash) {
@@ -364,7 +364,7 @@ function login(username, password, client) {
           reason += '; account locked';
         }
         update_('Users', u);
-        audit_(u, 'LOGIN_FAILED', 'User', u.id, '', '', reason, client);
+        audit_(u, 'LOGIN_FAILED', 'User', u.id, '', '', reason, '', client);
         throw new Error('Invalid username or password.');
       }
       u.failed = '0'; u.lockedUntil = '';
@@ -375,7 +375,7 @@ function login(username, password, client) {
       update_('Users', u);
       var token = Utilities.getUuid() + Utilities.getUuid();
       putSession_(token, u.id);
-      audit_(u, 'LOGIN', 'User', u.id, '', '', '', client);
+      audit_(u, 'LOGIN', 'User', u.id, '', '', '', '', client);
       return { ok: true, data: { token: token, mustChange: u.mustChange === 'Y' } };
     });
   } catch (e) {
@@ -426,7 +426,7 @@ function apiChangePassword_(user, p) {
   if (hashPw_(p.newPassword, user.salt) === user.pwHash) { throw new Error('New password must differ from the current one.'); }
   setPassword_(user, p.newPassword, false);
   update_('Users', user);
-  audit_(user, 'PASSWORD_CHANGED', 'User', user.id, '', '', '', p.client);
+  audit_(user, 'PASSWORD_CHANGED', 'User', user.id, '', '', '', '', p.client);
   return true;
 }
 
