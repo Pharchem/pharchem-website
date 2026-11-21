@@ -1322,30 +1322,62 @@ function drawAiStatus() {
       (a.recentFailures.length ? '<br><span style="color:var(--bad)">Recent failures: ' + a.recentFailures.map(function (j) { return esc(j.error); }).join('; ') + '</span>' : '');
   }).catch(function () {});
 }
-var LIM = null;
+var LIM = null, LIMDOC = {}, LIMOPEN = {};
 function drawLimits() {
   call('getLimits').then(function (r) {
     LIM = r;
-    var byM = {};
-    r.limits.forEach(function (l) { (byM[l.masterId] = byM[l.masterId] || []).push(l); });
-    var ms = r.masters.filter(function (m) { return byM[m.id]; }).sort(function (a, b) { return a.title.localeCompare(b.title, undefined, { numeric: true }); });
-    var none = r.masters.filter(function (m) { return !byM[m.id]; }).length;
-    $('lim').innerHTML = (ms.length ? ms.map(function (m) {
-      var ls = byM[m.id].sort(function (a, b) { return a.order - b.order; });
-      var drafts = ls.filter(function (l) { return l.status === 'DRAFT'; }).length;
-      return '<details' + (drafts ? ' open' : '') + ' style="border:1px solid var(--line);border-radius:8px;padding:6px 10px;margin-bottom:6px"><summary><b>' + esc(m.title) + '</b> ' +
-        (drafts ? '<span class="chip c-warn">' + drafts + ' awaiting approval</span>' : '<span class="chip c-ok">approved</span>') + '</summary>' +
-        '<table style="margin-top:6px"><thead><tr><th>Parameter</th><th>Stage</th><th>Limit</th><th>Status</th><th></th></tr></thead><tbody>' + ls.map(function (l) {
-          return '<tr class="small"><td>' + esc(l.parameter) + '</td><td>' + esc(l.stage) + '</td><td>' + esc(limText(l)) + '</td><td>' + (l.status === 'DRAFT' ? '<span class="chip c-warn">Draft (' + esc(l.source) + ')</span>' : '<span class="chip c-ok">Approved</span><br>' + esc(l.approvedBy)) + '</td>' +
-            '<td style="white-space:nowrap">' + (isQA() ? '<button class="btn sm sec" onclick="editLimit(\'' + l.id + '\')">Edit</button> <button class="btn sm sec" onclick="retireLimit(\'' + l.id + '\')">Remove</button>' : '') + '</td></tr>';
-        }).join('') + '</tbody></table>' + (isQA() ? '<div class="row" style="margin-top:6px"><button class="btn sm sec" onclick="editLimit(null,\'' + m.id + '\')">+ Add limit</button>' +
-          (drafts ? '<button class="btn sm ok" onclick="approveLimits(\'' + m.id + '\')">Approve ' + drafts + ' draft limit(s)</button>' : '') + '</div>' : '') + '</details>';
-    }).join('') : '<p class="muted">No limits yet.</p>') + (none ? '<p class="small muted">' + none + ' master documents have no limits yet - click "Read limits from GMP documents".</p>' : '');
+    var withL = r.masters.filter(function (m) { return m.draft + m.approved > 0; });
+    var none = r.masters.length - withL.length;
+    var nd = withL.filter(function (m) { return m.draft; }).length;
+    if (!$('limq')) {
+      $('lim').innerHTML = '<div class="row" style="margin-bottom:8px"><input type="text" id="limq" placeholder="Search customer or document (e.g. Dynemic, BMR-21)" style="max-width:340px">' +
+        '<select id="limf" style="max-width:220px"><option value="DRAFT">Awaiting approval</option><option value="APPROVED">Approved</option><option value="">All documents</option></select>' +
+        '<select id="limp" style="max-width:140px"><option value="">ALP + MGP</option><option value="ALP">ALP</option><option value="MGP">MGP</option></select></div><div id="limsum" class="small" style="margin-bottom:6px"></div><div id="limlist"></div>';
+      $('limq').oninput = drawLimitList; $('limf').onchange = drawLimitList; $('limp').onchange = drawLimitList;
+    }
+    $('limsum').innerHTML = withL.length + ' documents with limits: <b>' + nd + '</b> awaiting approval, ' + (withL.length - nd) + ' approved.' +
+      (none ? ' ' + none + ' master documents have no limits yet.' : '');
+    drawLimitList();
   }).catch(function (e) { $('lim').innerHTML = '<div class="err">' + esc(e.message) + '</div>'; });
+}
+function drawLimitList() {
+  if (!LIM) return;
+  var q = $('limq').value.trim().toLowerCase(), f = $('limf').value, pc = $('limp').value;
+  var ms = LIM.masters.filter(function (m) {
+    if (!(m.draft + m.approved)) return false;
+    if (f === 'DRAFT' && !m.draft) return false;
+    if (f === 'APPROVED' && (m.draft || !m.approved)) return false;
+    if (pc && m.productCode !== pc) return false;
+    return !q || (m.title + ' ' + m.customerHint + ' ' + m.kind).toLowerCase().indexOf(q) >= 0;
+  }).sort(function (a, b) { return a.title.localeCompare(b.title, undefined, { numeric: true }); });
+  var shown = ms.slice(0, 60);
+  $('limlist').innerHTML = (shown.length ? shown.map(function (m) {
+    return '<details data-m="' + m.id + '"' + (LIMOPEN[m.id] ? ' open' : '') + ' style="border:1px solid var(--line);border-radius:8px;padding:6px 10px;margin-bottom:6px"><summary><b>' + esc(m.title) + '</b> <span class="small muted">' + esc(m.kind) + '</span> ' +
+      (m.draft ? '<span class="chip c-warn">' + m.draft + ' awaiting approval</span>' : '<span class="chip c-ok">' + m.approved + ' approved</span>') + '</summary><div class="limbody small muted">Loading...</div></details>';
+  }).join('') : '<p class="muted">No documents match.</p>') + (ms.length > shown.length ? '<p class="small muted">' + (ms.length - shown.length) + ' more - type in the search box to narrow the list.</p>' : '');
+  Array.prototype.forEach.call(document.querySelectorAll('#limlist details'), function (d) {
+    d.addEventListener('toggle', function () { LIMOPEN[d.getAttribute('data-m')] = d.open; if (d.open) loadLimitDoc(d.getAttribute('data-m')); });
+    if (d.open) loadLimitDoc(d.getAttribute('data-m'));
+  });
+}
+function loadLimitDoc(mid) {
+  call('getLimits', { masterId: mid }).then(function (r) {
+    LIMDOC[mid] = r.limits;
+    var box = document.querySelector('#limlist details[data-m="' + mid + '"] .limbody');
+    if (!box) return;
+    var ls = r.limits.sort(function (a, b) { return a.order - b.order; });
+    var drafts = ls.filter(function (l) { return l.status === 'DRAFT'; }).length;
+    box.className = 'limbody';
+    box.innerHTML = '<table style="margin-top:6px"><thead><tr><th>Parameter</th><th>Stage</th><th>Limit</th><th>Status</th><th></th></tr></thead><tbody>' + ls.map(function (l) {
+      return '<tr class="small"><td>' + esc(l.parameter) + '</td><td>' + esc(l.stage) + '</td><td>' + esc(limText(l)) + '</td><td>' + (l.status === 'DRAFT' ? '<span class="chip c-warn">Draft (' + esc(l.source) + ')</span>' : '<span class="chip c-ok">Approved</span>') + '</td>' +
+        '<td style="white-space:nowrap">' + (isQA() ? '<button class="btn sm sec" onclick="editLimit(\'' + l.id + '\',\'' + mid + '\')">Edit</button> <button class="btn sm sec" onclick="retireLimit(\'' + l.id + '\',\'' + mid + '\')">Remove</button>' : '') + '</td></tr>';
+    }).join('') + '</tbody></table>' + (isQA() ? '<div class="row" style="margin-top:6px"><button class="btn sm sec" onclick="editLimit(null,\'' + mid + '\')">+ Add limit</button>' +
+      (drafts ? '<button class="btn sm ok" onclick="approveLimits(\'' + mid + '\')">Approve ' + drafts + ' draft limit(s)</button>' : '') + '</div>' : '');
+  }).catch(function (e) { toast(e.message); });
 }
 function limText(l) { if (l.limitType !== 'TEXT' && l.textSpec) return l.textSpec; return l.limitType === 'RANGE' ? l.low + ' - ' + l.high + ' ' + l.unit : l.limitType === 'MAX' ? 'NMT ' + l.high + ' ' + l.unit : l.limitType === 'MIN' ? 'NLT ' + l.low + ' ' + l.unit : l.textSpec; }
 function editLimit(id, masterId) {
-  var l = id ? LIM.limits.filter(function (x) { return x.id === id; })[0] : { masterId: masterId, parameter: '', stage: '', unit: '', limitType: 'RANGE', low: '', high: '', textSpec: '' };
+  var l = id ? (LIMDOC[masterId] || []).filter(function (x) { return x.id === id; })[0] : { masterId: masterId, parameter: '', stage: '', unit: '', limitType: 'RANGE', low: '', high: '', textSpec: '' };
   var bg = openModal(mh(id ? 'Edit limit' : 'Add limit') + '<div class="grid2"><div><label class="f">Parameter</label><input type="text" id="el1" value="' + esc(l.parameter) + '"></div><div><label class="f">Stage / step</label><input type="text" id="el2" value="' + esc(l.stage) + '"></div>' +
     '<div><label class="f">Type</label><select id="el3">' + [['RANGE', 'Range (low - high)'], ['MAX', 'NMT / maximum'], ['MIN', 'NLT / minimum'], ['TEXT', 'Descriptive']].map(function (o) { return '<option value="' + o[0] + '" ' + (l.limitType === o[0] ? 'selected' : '') + '>' + o[1] + '</option>'; }).join('') + '</select></div>' +
     '<div><label class="f">Unit</label><input type="text" id="el4" value="' + esc(l.unit) + '"></div><div><label class="f">Low</label><input type="text" id="el5" value="' + esc(l.low) + '"></div><div><label class="f">High</label><input type="text" id="el6" value="' + esc(l.high) + '"></div></div>' +
@@ -1353,10 +1385,10 @@ function editLimit(id, masterId) {
     '<p class="small">Saved limits become drafts and must be approved before they are used.</p><div id="elerr"></div><div class="row" style="justify-content:flex-end"><button class="btn" id="elb">Save draft</button></div>');
   $('elb').onclick = function () {
     call('saveLimit', { id: id, masterId: l.masterId, parameter: $('el1').value, stage: $('el2').value, limitType: $('el3').value, unit: $('el4').value, low: $('el5').value, high: $('el6').value, textSpec: $('el7').value, reason: $('el8').value })
-      .then(function () { bg.remove(); drawLimits(); }).catch(function (e) { showErr('elerr', e); });
+      .then(function () { bg.remove(); LIMOPEN[l.masterId] = true; drawLimits(); }).catch(function (e) { showErr('elerr', e); });
   };
 }
-function retireLimit(id) { askText('Remove limit', 'Reason (recorded in the audit trail)').then(function (r) { if (r) call('saveLimit', { id: id, retire: true, reason: r }).then(drawLimits).catch(function (e) { toast(e.message); }); }); }
+function retireLimit(id, mid) { askText('Remove limit', 'Reason (recorded in the audit trail)').then(function (r) { if (r) call('saveLimit', { id: id, retire: true, reason: r }).then(function () { LIMOPEN[mid] = true; drawLimits(); }).catch(function (e) { toast(e.message); }); }); }
 function approveLimits(masterId) {
   askText('Approve limits', 'Your password (electronic signature). Check every limit against the master document first.', { password: true }).then(function (pw) {
     if (pw) call('approveLimits', { masterId: masterId, password: pw }).then(function (n) { toast(n + ' limits approved.'); drawLimits(); drawAiStatus(); }).catch(function (e) { toast(e.message); });

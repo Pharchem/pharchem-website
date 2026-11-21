@@ -393,13 +393,13 @@ function storeEntered_(versionId, p, user) {
     }
   });
   var vals = p.values || {};
-  limits.forEach(function (l) {
+  insertMany_('Results', limits.map(function (l) {
     var raw = String(vals[l.id] == null ? '' : vals[l.id]).trim();
     var nr = /^(nr|na|n\/a|not recorded)$/i.test(raw);
     var num = nr ? null : raw.replace(/,/g, '').match(/-?\d+(\.\d+)?/);
-    insert_('Results', Object.assign({ id: newId_('RS'), parameter: l.parameter, stage: l.stage, value: nr ? '' : raw,
-      numValue: num ? num[0] : '', unit: l.unit, confidence: 'entered', limitId: l.id, limitText: limitText_(l), check: '' }, base));
-  });
+    return Object.assign({ id: newId_('RS'), parameter: l.parameter, stage: l.stage, value: nr ? '' : raw,
+      numValue: num ? num[0] : '', unit: l.unit, confidence: 'entered', limitId: l.id, limitText: limitText_(l), check: '' }, base);
+  }));
   evaluateVersion_(versionId);
   return true;
 }
@@ -411,18 +411,18 @@ function storeEntered_(versionId, p, user) {
 function storeLimits_(masterId, data) {
   var d = findById_('DocMaster', masterId);
   var now = iso_(Date.now());
-  rows_('Limits').filter(function (l) { return l.masterId === masterId && l.status === 'DRAFT'; })
-    .forEach(function (l) { l.status = 'RETIRED'; l.updatedAt = now; update_('Limits', l); });
+  updateMany_('Limits', rows_('Limits').filter(function (l) { return l.masterId === masterId && l.status === 'DRAFT'; })
+    .map(function (l) { l.status = 'RETIRED'; l.updatedAt = now; return l; }));
   var params = (data.parameters || []).slice();
   if (data.shelfLifeMonths) {
     params.push({ parameter: 'Shelf life', stage: 'INFO', unit: 'months', limitType: 'TEXT', low: null, high: null, textSpec: String(data.shelfLifeMonths) });
   }
-  params.forEach(function (p, i) {
-    insert_('Limits', { id: newId_('L'), masterId: masterId, masterTitle: d.title, productCode: d.productCode, kind: d.kind,
+  insertMany_('Limits', params.map(function (p, i) {
+    return { id: newId_('L'), masterId: masterId, masterTitle: d.title, productCode: d.productCode, kind: d.kind,
       parameter: p.parameter, stage: p.stage || '', unit: p.unit || '', limitType: p.limitType,
       low: p.low == null ? '' : String(p.low), high: p.high == null ? '' : String(p.high), textSpec: p.textSpec || '',
-      order: String(i + 1), status: 'DRAFT', source: 'AI', approvedBy: '', approvedAt: '', updatedAt: now });
-  });
+      order: String(i + 1), status: 'DRAFT', source: 'AI', approvedBy: '', approvedAt: '', updatedAt: now };
+  }));
   audit_(null, 'LIMITS_EXTRACTED', 'DocMaster', masterId, '', '', params.length + ' limits read from ' + d.title + ' (draft, awaiting QA approval)', '', '');
 }
 
@@ -434,9 +434,24 @@ function limitText_(l) {
   return l.textSpec;
 }
 
+/** Without masterId: one summary row per master document (counts only - fast).
+ *  With masterId: that document's limits. */
 function apiGetLimits_(user, p) {
-  var lim = rows_('Limits').filter(function (l) { return l.status !== 'RETIRED'; }).map(strip_);
-  return { limits: lim, masters: rows_('DocMaster').filter(function (d) { return d.active === 'Y' && d.kind !== 'STP'; }).map(strip_) };
+  p = p || {};
+  var lim = rows_('Limits').filter(function (l) { return l.status !== 'RETIRED'; });
+  if (p.masterId) {
+    return { limits: lim.filter(function (l) { return l.masterId === p.masterId; }).map(strip_) };
+  }
+  var cnt = {};
+  lim.forEach(function (l) {
+    var c = cnt[l.masterId] = cnt[l.masterId] || { draft: 0, approved: 0 };
+    if (l.status === 'DRAFT') { c.draft++; } else if (l.status === 'APPROVED') { c.approved++; }
+  });
+  var masters = rows_('DocMaster').filter(function (d) { return d.active === 'Y' && d.kind !== 'STP'; }).map(function (d) {
+    var c = cnt[d.id] || { draft: 0, approved: 0 };
+    return { id: d.id, title: d.title, kind: d.kind, productCode: d.productCode, customerHint: d.customerHint, draft: c.draft, approved: c.approved };
+  });
+  return { masters: masters };
 }
 
 /** p = { id?, masterId, parameter, stage, unit, limitType, low, high, textSpec, retire, reason } */
@@ -475,7 +490,8 @@ function apiApproveLimits_(user, p) {
   var drafts = rows_('Limits').filter(function (l) { return l.masterId === p.masterId && l.status === 'DRAFT'; });
   if (!drafts.length) { throw new Error('No draft limits to approve.'); }
   var now = iso_(Date.now());
-  drafts.forEach(function (l) { l.status = 'APPROVED'; l.approvedBy = user.name; l.approvedAt = now; l.updatedAt = now; update_('Limits', l); });
+  drafts.forEach(function (l) { l.status = 'APPROVED'; l.approvedBy = user.name; l.approvedAt = now; l.updatedAt = now; });
+  updateMany_('Limits', drafts);
   audit_(user, 'LIMITS_APPROVED', 'DocMaster', p.masterId, '', '', drafts.length + ' limits approved for ' + drafts[0].masterTitle, '', p.client);
   return drafts.length;
 }

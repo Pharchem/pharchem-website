@@ -2070,6 +2070,35 @@ function insert_(name, obj) {
   return obj;
 }
 
+/** Appends many rows in one write (one call per row is slow on Google Sheets). */
+function insertMany_(name, objs) {
+  if (!objs.length) { return objs; }
+  var s = sh_(name);
+  var at = s.getLastRow() + 1;
+  var data = objs.map(function (o) { return toRow_(name, o); });
+  s.getRange(at, 1, data.length, data[0].length).setNumberFormat('@').setValues(data);
+  objs.forEach(function (o, i) { o._row = at + i; });
+  delete CACHE_['r_' + name];
+  return objs;
+}
+
+/** Rewrites many existing rows, one write per run of consecutive rows. */
+function updateMany_(name, objs) {
+  var list = objs.filter(function (o) { if (!o._row) { throw new Error('update_ without row'); } return true; })
+    .slice().sort(function (a, b) { return a._row - b._row; });
+  var s = sh_(name);
+  var i = 0;
+  while (i < list.length) {
+    var j = i;
+    while (j + 1 < list.length && list[j + 1]._row === list[j]._row + 1) { j++; }
+    var run = list.slice(i, j + 1).map(function (o) { return toRow_(name, o); });
+    s.getRange(list[i]._row, 1, run.length, run[0].length).setValues(run);
+    i = j + 1;
+  }
+  delete CACHE_['r_' + name];
+  return objs;
+}
+
 function update_(name, obj) {
   if (!obj._row) { throw new Error('update_ without row'); }
   var row = toRow_(name, obj);
