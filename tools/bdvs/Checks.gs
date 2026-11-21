@@ -36,6 +36,7 @@ DEFAULT_SETTINGS.VALUE_SOURCE = ['FORM', 'FORM = PRD / QC type the key values wh
 DEFAULT_SETTINGS.AI_ENABLED = ['YES', 'YES = allow Claude API calls (limit extraction, and scan reading when VALUE_SOURCE = AI)'];
 DEFAULT_SETTINGS.AI_MODEL = ['claude-haiku-5-5', 'Claude model that reads scans when VALUE_SOURCE = AI (Haiku = lowest cost)'];
 DEFAULT_SETTINGS.LIMITS_MODEL = ['claude-opus-5-5', 'Claude model for the one-time reading of limits from master documents'];
+DEFAULT_SETTINGS.FORM_ASK_DESCRIPTIVE = ['NO', 'YES = the upload form also asks for descriptive limits (e.g. "clarity OK"); NO = numbers only, QA checks descriptive items on the scan'];
 DEFAULT_SETTINGS.EMAIL_QA_HEAD = ['', 'QA Head - emailed immediately when a value is out of limit (comma separated)'];
 DEFAULT_SETTINGS.TREND_BATCHES = ['30', 'Number of previous accepted batches used for the out-of-trend check'];
 
@@ -384,7 +385,8 @@ var SCAN_SCHEMA_ = {
   }
 };
 
-function limitsForVersion_(v) {
+/** numericOnly: for the typed-values form - descriptive limits ("stir 15 min", "clarity OK") are checked by QA on the scan instead. */
+function limitsForVersion_(v, numericOnly) {
   var d = findById_('Documents', v.docId);
   var b = findById_('Batches', v.batchId);
   var md = parseJson_(b.masterDocs, {});
@@ -392,7 +394,7 @@ function limitsForVersion_(v) {
   var seen = {}, out = [];
   masters.forEach(function (m) {
     if (!m) { return; }
-    rows_('Limits').filter(function (l) { return l.masterId === m.id && l.status === 'APPROVED' && l.stage !== 'INFO'; })
+    rows_('Limits').filter(function (l) { return l.masterId === m.id && l.status === 'APPROVED' && l.stage !== 'INFO' && !(numericOnly && l.limitType === 'TEXT'); })
       .sort(function (a, c) { return Number(a.order) - Number(c.order); })
       .forEach(function (l) {
         var key = norm_(l.parameter) + '|' + norm_(l.stage);
@@ -449,7 +451,7 @@ function apiFormFields_(user, p) {
   if (!d) { throw new Error('Document not found.'); }
   if ((user.role === 'PRD' || user.role === 'QC') && d.dept !== user.role) { throw new Error('Not permitted.'); }
   if (setting_('VALUE_SOURCE') === 'AI' && aiOn_()) { return { mode: 'AI', fields: [], header: [] }; }
-  var limits = limitsForVersion_({ docId: d.id, batchId: d.batchId });
+  var limits = limitsForVersion_({ docId: d.id, batchId: d.batchId }, setting_('FORM_ASK_DESCRIPTIVE') !== 'YES');
   return {
     mode: 'FORM',
     fields: limits.map(function (l) { return { limitId: l.id, parameter: l.parameter, stage: l.stage, unit: l.unit, text: l.limitType === 'TEXT' }; }),
@@ -460,7 +462,7 @@ function apiFormFields_(user, p) {
 /** Called from apiUpload_ (Code.gs) in FORM mode, before anything is written: returns an error text or ''. */
 function validateEntered_(d, p) {
   if (setting_('VALUE_SOURCE') === 'AI' && aiOn_()) { return ''; }
-  var limits = limitsForVersion_({ docId: d.id, batchId: d.batchId });
+  var limits = limitsForVersion_({ docId: d.id, batchId: d.batchId }, setting_('FORM_ASK_DESCRIPTIVE') !== 'YES');
   var vals = p.values || {};
   var missing = limits.filter(function (l) { return !String(vals[l.id] == null ? '' : vals[l.id]).trim(); });
   if (missing.length) { return 'Enter the value recorded in the document for: ' + missing.map(function (l) { return l.parameter + (l.stage ? ' [' + l.stage + ']' : ''); }).join(', ') + ' (write NR if it is not recorded).'; }
@@ -473,7 +475,7 @@ function storeEntered_(versionId, p, user) {
   var v = findById_('Versions', versionId);
   var d = findById_('Documents', v.docId);
   var b = findById_('Batches', v.batchId);
-  var limits = limitsForVersion_(v);
+  var limits = limitsForVersion_(v, setting_('FORM_ASK_DESCRIPTIVE') !== 'YES');
   var now = iso_(Date.now());
   var base = { versionId: versionId, docId: d.id, batchId: b.id, productCode: b.productCode, customer: b.customer, docType: d.type,
     correctedBy: '', correctionReason: '', createdAt: now, page: '', oot: '', ootText: '' };
