@@ -247,7 +247,7 @@ function renderLogin(msg) {
     '<form id="lf"><label class="f">Username</label><input type="text" id="lu" autocomplete="username" autofocus>' +
     '<label class="f" style="margin-top:10px">Password</label><input type="password" id="lp" autocomplete="current-password">' +
     '<div id="lerr"></div><button class="btn" style="width:100%;margin-top:14px" id="lb">Log in</button></form>' +
-    '<p class="small" style="margin-top:14px">Use your personal login. Never share your password: every action is recorded against your name in the audit trail.</p></div>';
+    '<p class="small" style="margin-top:14px">Use your department login and enter your own name when asked. Never share the password outside your department: every action is recorded against your name in the audit trail.</p></div>';
   $('lf').onsubmit = function (e) {
     e.preventDefault();
     var b = $('lb'); busy(b, true, 'Logging in');
