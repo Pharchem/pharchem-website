@@ -147,12 +147,35 @@ function call(action, payload) {
   payload = Object.assign({ client: navigator.userAgent.slice(0, 150) }, payload || {});
   if (isShared() && !payload.performedBy && S.who) payload.performedBy = S.who;
   return rpc('api', S.token, action, payload).then(function (r) {
-    if (r.ok) { bumpIdle(); return r.data; }
+    if (r.ok) { if (DASH_WRITES_[action]) { S.dash = null; } bumpIdle(); return r.data; }
     if (r.error === 'SESSION_EXPIRED') { endSession('Your session expired. Please log in again.'); }
     if (r.error === 'PASSWORD_CHANGE_REQUIRED') { renderChangePw(true); }
     if (r.error === 'NAME_REQUIRED') { askWho(); throw new Error('Enter your name first (shared department login), then try again.'); }
     throw new Error(r.error);
   });
+}
+/* Actions after which the cached dashboard must not be shown again. */
+var DASH_WRITES_ = { upload: 1, decide: 1, recordHardcopy: 1, resolveDiscrepancy: 1, closeBatch: 1, registerBatch: 1,
+  bulkRegister: 1, importProduction: 1, updateMasterDocs: 1, recheck: 1, correctResult: 1, resolveFinding: 1, skipAiCheck: 1 };
+
+/* Instant paint: draw the last known data at once so the view opens without waiting,
+   then fetch fresh data in the background and redraw (keeping any search/filter). */
+function freshDash(v, view, render) {
+  if (S.dash) { try { render(S.dash); } catch (e) { S.dash = null; } }
+  if (!S.dash) { return loadDash().then(render); }
+  var tag = document.createElement('div');
+  tag.textContent = 'Updating...';
+  tag.style.cssText = 'position:fixed;bottom:10px;left:14px;z-index:5;background:var(--grayb,#eee);color:var(--mut,#666);padding:2px 10px;border-radius:10px;font-size:12px';
+  document.body.appendChild(tag);
+  return loadDash().then(function (d) {
+    tag.remove();
+    if (S.view !== view || document.querySelector('.modal-bg')) { return; } // user moved on - data is saved, skip the redraw
+    var q = $('dq') ? $('dq').value : null, f = $('df') ? $('df').value : null;
+    render(d);
+    if (q != null && $('dq')) { $('dq').value = q; }
+    if (f != null && $('df')) { $('df').value = f; }
+    if ((q || f != null) && view === 'dashboard') { drawDash(); }
+  }).catch(function (e) { tag.remove(); throw e; });
 }
 /* ---- shared department logins: the person's name is recorded with every action ---- */
 var DEPT = { PRD: 'Production', QC: 'QC', QA: 'QA', ADMIN: 'Admin' };
@@ -345,7 +368,7 @@ function loadDash() {
 
 /* ======================= dashboard ======================= */
 function viewDashboard(v) {
-  return loadDash().then(function (d) {
+  return freshDash(v, 'dashboard', function (d) {
     var c = d.counts;
     var t = function (val, l, cls, f) { return '<div class="tile ' + cls + '" onclick="dashFilter(\'' + f + '\')"><div class="v">' + val + '</div><div class="l">' + l + '</div></div>'; };
     var overdueTotal = c.overdueUpload + c.overdueVerify + c.overdueHardcopy;
@@ -452,7 +475,7 @@ function exportRegister() {
 
 /* ======================= uploader tasks ======================= */
 function viewTasks(v) {
-  return loadDash().then(function (d) {
+  return freshDash(v, 'tasks', function (d) {
     var items = [];
     d.batches.forEach(function (b) { if (b.status !== 'CLOSED') b.docs.forEach(function (x) { items.push({ b: b, d: x }); }); });
     var todo = items.filter(function (i) { return i.d.status === 'PENDING_UPLOAD' || i.d.status === 'REJECTED'; })
@@ -770,7 +793,7 @@ function viewFile(versionId, index, name) {
 
 /* ======================= QA verification ======================= */
 function viewVerifyQueue(v) {
-  return loadDash().then(function (d) {
+  return freshDash(v, 'verify', function (d) {
     var list = [];
     d.batches.forEach(function (b) { b.docs.forEach(function (x) { if (x.status === 'UNDER_VERIFICATION') list.push({ b: b, d: x }); }); });
     list.sort(function (a, b) { return ms(a.d.verifyDueAt) - ms(b.d.verifyDueAt); });
@@ -965,7 +988,7 @@ function viewReports(v) {
 
 /* ======================= hardcopy ======================= */
 function viewHardcopy(v) {
-  return loadDash().then(function (d) {
+  return freshDash(v, 'hardcopy', function (d) {
     var list = [];
     d.batches.forEach(function (b) { b.docs.forEach(function (x) { if (x.status === 'HARDCOPY_PENDING' || x.status === 'HARDCOPY_DISCREPANCY') list.push({ b: b, d: x }); }); });
     list.sort(function (a, b) { return ms(a.d.hardcopyDueAt) - ms(b.d.hardcopyDueAt); });
