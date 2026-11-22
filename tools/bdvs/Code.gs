@@ -766,6 +766,7 @@ function apiImportDocMaster_(user, p) {
       .setValues(fresh.map(function (r) { return toRow_('DocMaster', r); }));
   }
   delete CACHE_['r_DocMaster'];
+  tcacheBump_('DocMaster');
   audit_(user, 'DOC_MASTER_IMPORTED', 'DocMaster', folderId, '', '',
     found.length + ' documents (' + added + ' new, ' + updated + ' refreshed, ' + retired + ' no longer in folder)', '', p.client);
   return { total: found.length, added: added, updated: updated, retired: retired };
@@ -2064,8 +2065,69 @@ function sh_(name) {
   return CACHE_['sh_' + name];
 }
 
+// ---------------------------------------------------------------------------
+// Shared table cache. Reading a sheet is a slow network call, and every click was
+// re-reading whole tables (Limits alone is ~60,000 cells). Tables are therefore kept
+// in CacheService between executions and reused across clicks and users; every write
+// through the data layer invalidates the copy, so nothing is ever served stale.
+// Append-heavy logs that are rarely read stay uncached.
+// ---------------------------------------------------------------------------
+
+var TCACHE_SKIP_ = { AuditLog: 1, ReminderLog: 1, AiJobs: 1, ImportLog: 1, BackupLog: 1 };
+var TCACHE_TTL_ = 21600;      // 6 h safety net in case someone edits the sheet by hand
+var TCACHE_CHUNK_ = 90000;    // CacheService allows ~100 KB per key
+
+function tcacheOn_(name) { return !TCACHE_SKIP_[name] && !!SHEETS[name]; }
+
+function tcacheBump_(name) {
+  if (!tcacheOn_(name)) { return; }
+  try { CacheService.getScriptCache().remove('tv_' + name); } catch (e) { /* cache unavailable */ }
+}
+
+function tcacheGet_(name) {
+  try {
+    var c = CacheService.getScriptCache();
+    var tok = c.get('tv_' + name);
+    if (!tok) { return null; }
+    var parts = [];
+    var n = Number(c.get('tm_' + name + '_' + tok));
+    if (!n) { return null; }
+    var keys = [];
+    for (var i = 0; i < n; i++) { keys.push('td_' + name + '_' + tok + '_' + i); }
+    var got = c.getAll ? c.getAll(keys) : null; // one round trip for all chunks
+    for (var j = 0; j < n; j++) {
+      var p = got ? got[keys[j]] : c.get(keys[j]);
+      if (p == null) { return null; }
+      parts.push(p);
+    }
+    return JSON.parse(parts.join(''));
+  } catch (e) { return null; }
+}
+
+function tcachePut_(name, payload) {
+  try {
+    var s = JSON.stringify(payload);
+    if (s.length > 1800000) { return; } // too big to cache; read from the sheet instead
+    var c = CacheService.getScriptCache();
+    var tok = Utilities.getUuid().slice(0, 8);
+    var n = Math.ceil(s.length / TCACHE_CHUNK_) || 1;
+    var batch = {};
+    for (var i = 0; i < n; i++) { batch['td_' + name + '_' + tok + '_' + i] = s.substr(i * TCACHE_CHUNK_, TCACHE_CHUNK_); }
+    batch['tm_' + name + '_' + tok] = String(n);
+    if (c.putAll) { c.putAll(batch, TCACHE_TTL_); }
+    else { Object.keys(batch).forEach(function (k) { c.put(k, batch[k], TCACHE_TTL_); }); }
+    c.put('tv_' + name, tok, TCACHE_TTL_ - 600); // the pointer expires first, so chunks never outlive it
+  } catch (e) { /* cache unavailable - everything still works from the sheet */ }
+}
+
 function headers_(name) {
   if (!CACHE_['h_' + name]) {
+    var cached = null;
+    try { cached = CacheService.getScriptCache().get('th_' + name); } catch (e) {}
+    if (cached) {
+      CACHE_['h_' + name] = JSON.parse(cached);
+      return CACHE_['h_' + name];
+    }
     var s = sh_(name);
     var h = s.getRange(1, 1, 1, s.getLastColumn()).getValues()[0].map(String);
     // Columns added by a code update are appended automatically (existing data is never moved).
@@ -2073,23 +2135,39 @@ function headers_(name) {
     if (missing.length) {
       s.getRange(1, h.length + 1, 1, missing.length).setValues([missing]);
       h = h.concat(missing);
+      tcacheBump_(name);
     }
     CACHE_['h_' + name] = h;
+    try { CacheService.getScriptCache().put('th_' + name, JSON.stringify(h), TCACHE_TTL_); } catch (e) {}
   }
   return CACHE_['h_' + name];
 }
 
 function rows_(name) {
   if (!CACHE_['r_' + name]) {
+    var shared = tcacheOn_(name) ? tcacheGet_(name) : null;
+    if (shared) {
+      CACHE_['h_' + name] = shared.h;
+      CACHE_['r_' + name] = shared.v.map(function (row, i) {
+        var o = { _row: i + 2 };
+        shared.h.forEach(function (k, j) { o[k] = row[j]; });
+        return o;
+      });
+      return CACHE_['r_' + name];
+    }
     var s = sh_(name);
     var last = s.getLastRow();
     var h = headers_(name);
     var vals = last > 1 ? s.getRange(2, 1, last - 1, h.length).getValues() : [];
+    var plain = [];
     CACHE_['r_' + name] = vals.map(function (row, i) {
       var o = { _row: i + 2 };
-      h.forEach(function (k, j) { o[k] = isDate_(row[j]) ? iso_(row[j].getTime()) : String(row[j]); });
+      var arr = h.map(function (k, j) { return isDate_(row[j]) ? iso_(row[j].getTime()) : String(row[j]); });
+      h.forEach(function (k, j) { o[k] = arr[j]; });
+      plain.push(arr);
       return o;
     });
+    if (tcacheOn_(name)) { tcachePut_(name, { h: h, v: plain }); }
   }
   return CACHE_['r_' + name];
 }
@@ -2109,6 +2187,7 @@ function insert_(name, obj) {
   var at = s.getLastRow() + 1;
   s.getRange(at, 1, 1, row.length).setNumberFormat('@').setValues([row]);
   delete CACHE_['r_' + name];
+  tcacheBump_(name);
   obj._row = at;
   return obj;
 }
@@ -2122,6 +2201,7 @@ function insertMany_(name, objs) {
   s.getRange(at, 1, data.length, data[0].length).setNumberFormat('@').setValues(data);
   objs.forEach(function (o, i) { o._row = at + i; });
   delete CACHE_['r_' + name];
+  tcacheBump_(name);
   return objs;
 }
 
@@ -2139,6 +2219,7 @@ function updateMany_(name, objs) {
     i = j + 1;
   }
   delete CACHE_['r_' + name];
+  tcacheBump_(name);
   return objs;
 }
 
@@ -2147,6 +2228,7 @@ function update_(name, obj) {
   var row = toRow_(name, obj);
   sh_(name).getRange(obj._row, 1, 1, row.length).setValues([row]);
   delete CACHE_['r_' + name];
+  tcacheBump_(name);
   return obj;
 }
 
@@ -2156,6 +2238,7 @@ function deleteRow_(name, obj) {
   }
   sh_(name).deleteRow(obj._row);
   delete CACHE_['r_' + name];
+  tcacheBump_(name);
 }
 
 function findById_(name, id) {
