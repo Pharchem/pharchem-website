@@ -36,6 +36,12 @@ DEFAULT_SETTINGS.VALUE_SOURCE = ['FORM', 'FORM = PRD / QC type the key values wh
 DEFAULT_SETTINGS.AI_ENABLED = ['YES', 'YES = allow Claude API calls (limit extraction, and scan reading when VALUE_SOURCE = AI)'];
 DEFAULT_SETTINGS.AI_MODEL = ['claude-haiku-5-5', 'Claude model that reads scans when VALUE_SOURCE = AI (Haiku = lowest cost)'];
 DEFAULT_SETTINGS.LIMITS_MODEL = ['claude-opus-5-5', 'Claude model for the one-time reading of limits from master documents'];
+DEFAULT_SETTINGS.KEY_PARAMS_ONLY = ['YES', 'YES = the upload form asks only the key values below; NO = every approved numeric limit'];
+DEFAULT_SETTINGS.KEY_PARAMS_BMR = ['pH | Al2O3, claim | viscosity | free chlorine', 'BMR values Production types (groups separated by |, alternative words by commas). Only the LAST stage of each group is asked.'];
+DEFAULT_SETTINGS.KEY_PARAMS_COA = ['pH | assay | chloride | neutraliz', 'COA values QC types (groups separated by |, alternative words by commas). Every matching test is asked.'];
+DEFAULT_SETTINGS.KEY_PARAMS_COA_LAKE = ['solid content | LOD, loss on drying', 'Extra COA values asked only for lake colour customers'];
+DEFAULT_SETTINGS.LAKE_COLOUR_CUSTOMERS = ['Koel, Akay, Dynemic, Roha, Neelikon', 'Customers that get lake colour grade (comma separated)'];
+DEFAULT_SETTINGS.KEY_PARAMS_EXCLUDE = ['pH of water, re-wash, rewash, NaCl, sodium chloride, magnesium chloride, MgCl2, raw material', 'Limits whose name contains any of these words are never asked'];
 DEFAULT_SETTINGS.FORM_ASK_DESCRIPTIVE = ['NO', 'YES = the upload form also asks for descriptive limits (e.g. "clarity OK"); NO = numbers only, QA checks descriptive items on the scan'];
 DEFAULT_SETTINGS.EMAIL_QA_HEAD = ['', 'QA Head - emailed immediately when a value is out of limit (comma separated)'];
 DEFAULT_SETTINGS.TREND_BATCHES = ['30', 'Number of previous accepted batches used for the out-of-trend check'];
@@ -390,6 +396,40 @@ var SCAN_SCHEMA_ = {
   }
 };
 
+/** Key-parameter filter for the typed-values form: Production / QC type only the values QA decided matter. */
+function keyWords_(txt) {
+  return String(txt || '').split('|').map(function (g) {
+    return g.split(',').map(function (w) { return w.trim().toLowerCase(); }).filter(String);
+  }).filter(function (g) { return g.length; });
+}
+function nameHas_(name, word) {
+  var n = String(name || '').toLowerCase();
+  if (/^[a-z0-9]{1,3}$/.test(word)) { return new RegExp('(^|[^a-z0-9])' + word + '([^a-z0-9]|$)').test(n); } // short words (pH, LOD) as whole words
+  return n.indexOf(word) >= 0;
+}
+function isLakeCustomer_(customer) {
+  var key = customerKey_(customer);
+  return String(setting_('LAKE_COLOUR_CUSTOMERS') || '').split(',').some(function (c) {
+    var k = customerKey_(c);
+    return k && (key === k || (' ' + key + ' ').indexOf(' ' + k + ' ') >= 0);
+  });
+}
+function keyFilter_(limits, docType, b) {
+  if (setting_('KEY_PARAMS_ONLY') === 'NO') { return limits; }
+  var exclude = String(setting_('KEY_PARAMS_EXCLUDE') || '').split(',').map(function (w) { return w.trim().toLowerCase(); }).filter(String);
+  var usable = limits.filter(function (l) { return !exclude.some(function (w) { return nameHas_(l.parameter, w); }); });
+  var groups = keyWords_(setting_(docType === 'BMR_BPR' ? 'KEY_PARAMS_BMR' : 'KEY_PARAMS_COA'));
+  if (docType !== 'BMR_BPR' && isLakeCustomer_(b.customer)) { groups = groups.concat(keyWords_(setting_('KEY_PARAMS_COA_LAKE'))); }
+  var keep = {};
+  groups.forEach(function (g) {
+    var hits = usable.filter(function (l) { return g.some(function (w) { return nameHas_(l.parameter, w); }); });
+    if (!hits.length) { return; }
+    if (docType === 'BMR_BPR') { hits = [hits[hits.length - 1]]; } // last stage only (limits are in document order)
+    hits.forEach(function (l) { keep[l.id] = true; });
+  });
+  return limits.filter(function (l) { return keep[l.id]; });
+}
+
 /** numericOnly: for the typed-values form - descriptive limits ("stir 15 min", "clarity OK") are checked by QA on the scan instead. */
 function limitsForVersion_(v, numericOnly) {
   var d = findById_('Documents', v.docId);
@@ -409,6 +449,7 @@ function limitsForVersion_(v, numericOnly) {
         if (!seen[key]) { seen[key] = true; out.push(l); }
       });
   });
+  if (numericOnly) { out = keyFilter_(out, d.type, b); }
   return out;
 }
 
@@ -417,7 +458,7 @@ function scanRequest_(job) {
   if (!v) { throw new Error('Version not found'); }
   var d = findById_('Documents', v.docId);
   var b = findById_('Batches', v.batchId);
-  var limits = limitsForVersion_(v);
+  var limits = limitsForVersion_(v, true); // key numeric values only - the same list QA chose for the form
   var files = parseJson_(v.files, []);
   var content = files.map(function (f) {
     return { type: 'document', source: { type: 'base64', media_type: 'application/pdf',
@@ -628,16 +669,20 @@ function storeScan_(versionId, data) {
   var v = findById_('Versions', versionId);
   var d = findById_('Documents', v.docId);
   var b = findById_('Batches', v.batchId);
-  var limits = indexBy_(limitsForVersion_(v), 'id');
+  var limits = indexBy_(limitsForVersion_(v, true), 'id');
   var now = iso_(Date.now());
-  rows_('Results').filter(function (r) { return r.versionId === versionId; }).forEach(function (r) { r.check = 'SUPERSEDED'; update_('Results', r); });
+  updateMany_('Results', rows_('Results').filter(function (r) { return r.versionId === versionId && r.check !== 'SUPERSEDED'; })
+    .map(function (r) { r.check = 'SUPERSEDED'; return r; }));
+  updateMany_('Findings', rows_('Findings').filter(function (f) { return f.versionId === versionId && f.type === 'AI_NOTE' && f.status === 'NOTE'; })
+    .map(function (f) { f.status = 'SUPERSEDED'; return f; }));
   var base = { versionId: versionId, docId: d.id, batchId: b.id, productCode: b.productCode, customer: b.customer, docType: d.type,
     correctedBy: '', correctionReason: '', createdAt: now };
+  var out = [];
   // Header fields
   var h = data.header || {};
   Object.keys(h).forEach(function (k) {
     if (String(h[k] || '').trim()) {
-      insert_('Results', Object.assign({ id: newId_('RS'), parameter: k, stage: 'HEADER', value: String(h[k]), numValue: '', unit: '',
+      out.push(Object.assign({ id: newId_('RS'), parameter: k, stage: 'HEADER', value: String(h[k]), numValue: '', unit: '',
         page: '', confidence: '', limitId: '', limitText: '', check: 'INFO', oot: '', ootText: '' }, base));
     }
   });
@@ -645,25 +690,25 @@ function storeScan_(versionId, data) {
   var reported = {};
   (data.values || []).forEach(function (x) {
     var l = limits[x.limitId];
-    if (!l) { return; }
+    if (!l || reported[l.id]) { return; }
     reported[l.id] = true;
-    insert_('Results', Object.assign({ id: newId_('RS'), parameter: l.parameter, stage: l.stage, value: x.found ? String(x.value) : '',
+    out.push(Object.assign({ id: newId_('RS'), parameter: l.parameter, stage: l.stage, value: x.found ? String(x.value) : '',
       numValue: x.found && x.numericValue != null ? String(x.numericValue) : '', unit: l.unit, page: String(x.page || ''),
       confidence: x.confidence, limitId: l.id, limitText: limitText_(l), check: '', oot: '', ootText: '' }, base));
   });
   Object.keys(limits).forEach(function (id) {
     if (reported[id] || limits[id].stage === 'INFO') { return; }
     var l = limits[id];
-    insert_('Results', Object.assign({ id: newId_('RS'), parameter: l.parameter, stage: l.stage, value: '', numValue: '', unit: l.unit,
+    out.push(Object.assign({ id: newId_('RS'), parameter: l.parameter, stage: l.stage, value: '', numValue: '', unit: l.unit,
       page: '', confidence: '', limitId: l.id, limitText: limitText_(l), check: '', oot: '', ootText: '' }, base));
   });
-  (data.otherValues || []).forEach(function (x) {
-    insert_('Results', Object.assign({ id: newId_('RS'), parameter: x.parameter, stage: 'OTHER', value: x.value, numValue: '', unit: '',
-      page: String(x.page || ''), confidence: '', limitId: '', limitText: '', check: 'NO_LIMIT', oot: '', ootText: '' }, base));
-  });
-  (data.observations || []).forEach(function (o) {
-    addFinding_(versionId, 'AI', 'WARN', 'p.' + o.page + ' [' + o.severity + '] ' + o.text);
-  });
+  insertMany_('Results', out);
+  // Documentation remarks from the reading: one non-blocking note for QA, who reviews the scan anyway.
+  var obs = (data.observations || []).map(function (o) { return 'p.' + o.page + ' [' + o.severity + '] ' + o.text; });
+  if (obs.length) {
+    var f = addFinding_(versionId, 'AI_NOTE', 'INFO', 'Noticed while reading the scan (check while answering the checklist): ' + obs.join(' | '), '');
+    if (f && f.status === 'OPEN') { f.status = 'NOTE'; update_('Findings', f); }
+  }
   evaluateVersion_(versionId);
 }
 
@@ -676,7 +721,7 @@ function evaluateVersion_(versionId) {
   // Derived findings are recomputed; resolved ones are kept for the record.
   rows_('Findings').filter(function (f) { return f.versionId === versionId && (f.status === 'OPEN' || f.status === 'NOTE') && ['LIMIT', 'UNREADABLE', 'OOT', 'CROSS', 'DATE', 'NR_NOTE'].indexOf(f.type) >= 0; })
     .forEach(function (f) { f.status = 'SUPERSEDED'; update_('Findings', f); });
-  var fails = [], notRecorded = [];
+  var fails = [], notRecorded = [], toConfirm = [];
   rows_('Results').filter(function (r) { return r.versionId === versionId && r.check !== 'SUPERSEDED' && r.limitId; }).forEach(function (r) {
     var l = limits[r.limitId];
     var res = checkValue_(l, r);
@@ -691,12 +736,17 @@ function evaluateVersion_(versionId) {
     } else if (res === 'UNREADABLE' && r.confidence === 'entered') {
       notRecorded.push(r.parameter + (r.stage ? ' [' + r.stage + ']' : '')); // typed as NR by the uploader - shown, not blocking
     } else if (res === 'UNREADABLE') {
-      addFinding_(versionId, 'UNREADABLE', 'WARN', 'Not found / not legible - ' + where + ' (limit ' + r.limitText + '). Check the scan; enter the value or justify.', r.id);
+      toConfirm.push(where + ': not found / not legible');
     } else if (res === 'CHECK') {
-      addFinding_(versionId, 'UNREADABLE', 'WARN', 'Confirm on the scan - ' + where + ': AI read "' + r.value + '" with low confidence (limit ' + r.limitText + ').', r.id);
+      toConfirm.push(where + ': read "' + r.value + '" (unsure, within limit ' + r.limitText + ')');
     }
     if (t) { addFinding_(versionId, 'OOT', 'WARN', 'Out of trend - ' + where + ': ' + t, r.id); }
   });
+  if (toConfirm.length) {
+    var cf = addFinding_(versionId, 'NR_NOTE', 'INFO', 'Confirm on the scan - the automatic reading was not sure about ' + toConfirm.length + ' value(s): ' + toConfirm.join('; ') +
+      '. Use "Correct" if a value is misread; no separate justification needed.', '');
+    if (cf && cf.status === 'OPEN') { cf.status = 'NOTE'; update_('Findings', cf); }
+  }
   if (notRecorded.length) {
     addFinding_(versionId, 'NR_NOTE', 'INFO', notRecorded.length + ' value(s) typed as NR (not recorded in the document): ' + notRecorded.join('; ') +
       '. Confirm on the scan while answering the checklist - no separate justification needed.', '');

@@ -1135,7 +1135,15 @@ function apiReminderLog_() {
 
 function apiGetSettings_() {
   return {
-    settings: rows_('Settings').map(strip_),
+    settings: (function () {
+      var have = rows_('Settings').map(strip_);
+      var keys = {}; have.forEach(function (r) { keys[r.key] = true; });
+      // settings added by a code update appear with their default value, so they can be changed here
+      Object.keys(DEFAULT_SETTINGS).forEach(function (k) {
+        if (!keys[k] && k !== 'ANTHROPIC_API_KEY') { have.push({ key: k, value: DEFAULT_SETTINGS[k][0], description: DEFAULT_SETTINGS[k][1] }); }
+      });
+      return have;
+    })(),
     holidays: rows_('Holidays').map(strip_).sort(function (a, b) { return String(a.date).localeCompare(String(b.date)); }),
     checklists: rows_('Checklists').map(strip_),
     remainingEmailQuota: (function () { try { return MailApp.getRemainingDailyQuota(); } catch (e) { return null; } })()
