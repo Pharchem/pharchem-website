@@ -533,7 +533,7 @@ function openUpload(docId) {
     '<div id="upl" style="margin:8px 0"></div>' +
     '<div class="grid2"><div><label class="f">Total number of pages scanned (count from the physical document)</label><input type="number" min="1" id="upp"></div></div>' +
     '<div id="upv"></div>' +
-    '<h3>Upload checklist</h3>' + UPLOAD_CHECKS.map(function (c) { return '<label style="display:block;margin:5px 0"><input type="checkbox" class="upc" data-k="' + c[0] + '"> ' + c[1] + '</label>'; }).join('') +
+    '<h3>Upload confirmation</h3><label style="display:block;margin:5px 0"><input type="checkbox" class="upc" data-k="all"> I checked the scan against the paper original: <b>all pages in order and legible, all entries and signatures present, page count matches the index, attachments included</b>.</label>' +
     '<label class="f" style="margin-top:8px">Remarks (optional)</label><textarea id="upr"></textarea>' +
     sigField('upsig') +
     '<div id="uperr"></div><div class="row" style="justify-content:flex-end;margin-top:12px"><button class="btn sec" onclick="closeModal(this)">Cancel</button><button class="btn" id="upb">Upload</button></div>');
@@ -625,6 +625,7 @@ function submitUpload(confirmDuplicate) {
   if (files.some(function (f) { return f.pages === '...'; })) return showErr('uperr', 'Still reading files, try again in a moment.');
   var checks = {}; var all = true;
   document.querySelectorAll('.upc').forEach(function (c) { checks[c.dataset.k] = c.checked; if (!c.checked) all = false; });
+  if ('all' in checks) { var yes = checks.all; delete checks.all; UPLOAD_CHECKS.forEach(function (c) { checks[c[0]] = yes; }); }
   if (!all) return showErr('uperr', 'Confirm every item of the upload checklist.');
   if (isShared() && !sigName('upsig')) return showErr('uperr', 'Type your name in the signature field.');
   var values = {}, header = {}, missingVals = [];
@@ -877,7 +878,11 @@ function decide(outcome) {
     .then(function (r) {
       document.querySelectorAll('.modal-bg').forEach(function (m) { m.remove(); });
       toast((outcome === 'ACCEPT' ? 'Verified OK. Hardcopy requested from ' : 'Rejected and returned to ') + VF.d.dept + '. Time taken: ' + r.elapsedHours + ' working h' + (r.breach === 'Y' ? ' (24 h BREACHED)' : '') + '.');
-      go(S.view);
+      loadDash().then(function (d2) { // straight on to the next document waiting for verification
+        var nb = null, nd = null;
+        d2.batches.forEach(function (b2) { if (nb) return; b2.docs.forEach(function (x) { if (!nb && x.status === 'UNDER_VERIFICATION') { nb = b2; nd = x; } }); });
+        if (nb && role() === 'QA') { toast('Next: ' + nb.batchNo + ' - ' + nd.label); openVerify(nb.id, nd.id); } else { go(S.view); }
+      });
     }).catch(function (e) { busy(btn, false); showErr('vferr', e); });
 }
 
@@ -1009,12 +1014,15 @@ function hardcopyDlg(docId) {
   var bb = S.batch && S.batch.docs.some(function (x) { return x.id === docId; }) ? S.batch : null;
   var dd = t ? t.d : bb.docs.filter(function (x) { return x.id === docId; })[0];
   var bat = t ? t.b : bb;
-  var pages = '';
-  if (bb) { var v = bb.versions.filter(function (x) { return x.docId === docId && String(x.versionNo) === String(dd.currentVersion); })[0]; if (v) pages = v.actualPages; }
+  var pages = '', from = '';
+  if (bb) { var v = bb.versions.filter(function (x) { return x.docId === docId && String(x.versionNo) === String(dd.currentVersion); })[0]; if (v) { pages = v.actualPages; from = v.uploaderName; } }
+  if (!pages && dd.check) { pages = dd.check.pages || ''; from = dd.check.uploader || ''; }
+  from = String(from || '').replace(/ \(.*$/, ''); // "Ravi Patil (Production)" -> "Ravi Patil"
+  var lastLoc = ''; try { lastLoc = localStorage.getItem('bdvs_hcloc') || ''; } catch (e) {}
   var bg = openModal(mh('Record hardcopy receipt') + '<p><b>' + esc(dd.label) + '</b> &middot; Batch ' + esc(bat.batchNo) + ' &middot; ' + esc(bat.product) + (pages ? ' &middot; verified scan has <b>' + pages + ' pages</b>' : '') + '</p>' +
-    '<div class="grid2"><div><label class="f">Received from (name)</label><input type="text" id="hc1"></div><div><label class="f">Date received</label><input type="date" id="hc2" value="' + todayYmd() + '" max="' + todayYmd() + '"></div>' +
+    '<div class="grid2"><div><label class="f">Received from (name)</label><input type="text" id="hc1" value="' + esc(from) + '"></div><div><label class="f">Date received</label><input type="date" id="hc2" value="' + todayYmd() + '" max="' + todayYmd() + '"></div>' +
     '<div><label class="f">Pages received (count the original)</label><input type="number" min="1" id="hc3"></div><div><label class="f">Condition</label><select id="hc4"><option>Good</option><option>Damaged - legible</option><option>Damaged - illegible parts</option></select></div>' +
-    '<div><label class="f">Storage location (file / rack / box no.)</label><input type="text" id="hc5"></div></div>' +
+    '<div><label class="f">Storage location (file / rack / box no.)</label><input type="text" id="hc5" value="' + esc(lastLoc) + '"></div></div>' +
     '<label style="display:block;margin-top:10px"><input type="checkbox" id="hc6"> Hardcopy differs from the verified scan (content, signatures, pages)</label><textarea id="hc7" placeholder="Describe the discrepancy" style="margin-top:4px"></textarea>' +
     '<p class="small">A page-count mismatch is automatically recorded as a discrepancy and blocks batch closure until resolved.</p>' +
     sigField('hcsig') + '<div id="hcerr"></div><div class="row" style="justify-content:flex-end"><button class="btn sec" onclick="closeModal(this)">Cancel</button><button class="btn" id="hcb">Save receipt</button></div>');
@@ -1023,7 +1031,15 @@ function hardcopyDlg(docId) {
     var b = $('hcb'); busy(b, true);
     call('recordHardcopy', { docId: docId, receivedFrom: $('hc1').value, receivedOn: $('hc2').value, pagesReceived: $('hc3').value, condition: $('hc4').value,
       location: $('hc5').value, discrepancy: $('hc6').checked, discrepancyText: $('hc7').value , performedBy: sigName('hcsig')})
-      .then(function (r) { document.querySelectorAll('.modal-bg').forEach(function (m) { m.remove(); }); toast(r.status === 'HARDCOPY_RECEIVED' ? 'Hardcopy receipt recorded.' : 'Receipt recorded WITH DISCREPANCY - resolve it before closure.'); go(S.view); })
+      .then(function (r) {
+        try { localStorage.setItem('bdvs_hcloc', $('hc5').value); } catch (e) {}
+        document.querySelectorAll('.modal-bg').forEach(function (m) { m.remove(); });
+        toast(r.status === 'HARDCOPY_RECEIVED' ? 'Hardcopy receipt recorded.' : 'Receipt recorded WITH DISCREPANCY - resolve it before closure.');
+        loadDash().then(function (d2) {
+          var rb = d2.batches.filter(function (x) { return x.id === bat.id && x.status === 'READY_TO_CLOSE'; })[0];
+          if (rb) { closeBatchDlg(rb.id, rb.batchNo); } else { go(S.view); }
+        });
+      })
       .catch(function (e) { busy(b, false); showErr('hcerr', e); });
   };
 }
@@ -1309,14 +1325,28 @@ function viewSettings(v) {
       '<table style="margin-top:8px"><tbody>' + (s.holidays.length ? s.holidays.map(function (h) {
         return '<tr><td>' + fYmd(h.date) + '</td><td>' + esc(h.name) + '</td><td class="small">added by ' + esc(h.addedBy) + '</td><td><button class="btn sm sec" onclick="removeHoliday(\'' + h.date + '\')">Remove</button></td></tr>';
       }).join('') : '<tr><td class="muted">No holidays declared.</td></tr>') + '</tbody></table></div>' +
+      (role() === 'QA' ? '<div class="card"><h3 style="margin-top:0">Short QA checklist</h3><p class="small">Replaces the checklists below with the agreed short ones: <b>BMR / BPR 6 items, COA 5 items</b>. ' +
+        'Current items are deactivated (kept for past records), never deleted. Signed with your QA password and recorded in the audit trail.</p>' +
+        '<button class="btn sm" id="shortck">Switch to short checklist</button></div>' : '') +
       Object.keys(S.boot.docTypes).map(function (t) {
-        var items = s.checklists.filter(function (c) { return c.docType === t; }).sort(function (a, b) { return a.order - b.order; });
+        var items = s.checklists.filter(function (c) { return c.docType === t && c.active === 'Y'; }).sort(function (a, b) { return a.order - b.order; });
+        var inactive = s.checklists.filter(function (c) { return c.docType === t && c.active !== 'Y'; }).sort(function (a, b) { return a.order - b.order; });
         return '<div class="card"><h3 style="margin-top:0">QA verification checklist - ' + esc(S.boot.docTypes[t].label) + '</h3><table><tbody>' + items.map(function (c) {
           return '<tr style="' + (c.active === 'Y' ? '' : 'opacity:.5') + '"><td style="width:30px">' + c.order + '</td><td>' + esc(c.item) + (c.active === 'Y' ? '' : ' <span class="chip c-gray">inactive</span>') + '</td><td style="white-space:nowrap">' +
             '<button class="btn sm sec" onclick="editCk(\'' + c.id + '\',\'' + t + '\')">Edit</button> <button class="btn sm sec" onclick="toggleCk(\'' + c.id + '\',\'' + t + '\',' + (c.active !== 'Y') + ')">' + (c.active === 'Y' ? 'Deactivate' : 'Activate') + '</button></td></tr>';
-        }).join('') + '</tbody></table><div class="row" style="margin-top:8px"><input type="text" id="nk_' + t + '" placeholder="New checklist item"><button class="btn sm" onclick="addCk(\'' + t + '\')">Add item</button></div></div>';
+        }).join('') + '</tbody></table>' + (inactive.length ? '<details style="margin-top:6px"><summary class="small muted">Inactive items (' + inactive.length + ')</summary><table><tbody>' + inactive.map(function (c) {
+          return '<tr style="opacity:.6"><td>' + esc(c.item) + ' <span class="chip c-gray">inactive</span></td><td style="white-space:nowrap"><button class="btn sm sec" onclick="toggleCk(\'' + c.id + '\',\'' + t + '\',true)">Activate</button></td></tr>';
+        }).join('') + '</tbody></table></details>' : '') + '<div class="row" style="margin-top:8px"><input type="text" id="nk_' + t + '" placeholder="New checklist item"><button class="btn sm" onclick="addCk(\'' + t + '\')">Add item</button></div></div>';
       }).join('');
     S.ckData = s.checklists;
+    if ($('shortck')) $('shortck').onclick = function () {
+      askText('Switch to short checklist', 'BMR / BPR 6 items, COA 5 items. Your QA password (electronic signature):', { password: true }).then(function (pw) {
+        if (!pw) return;
+        call('useShortChecklist', { password: pw, reason: 'QA decision: short verification checklist' }).then(function (r) {
+          toast('Short checklist in use (' + r.added + ' items; ' + r.deactivated + ' old items deactivated).'); go('settings');
+        }).catch(function (e) { toast(e.message); });
+      });
+    };
     if (admin) $('tst').onclick = function () { var b = this; busy(b, true); call('sendTestEmail').then(function (r) { busy(b, false); toast('Test email ' + r.status + ' to ' + r.sentTo.join(', ')); }).catch(function (e) { busy(b, false); toast(e.message); }); };
     $('gmpb').onclick = function () {
       var b = this; busy(b, true, 'Scanning folder');

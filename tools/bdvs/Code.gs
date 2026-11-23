@@ -311,6 +311,7 @@ var ACTIONS = Object.assign(typeof ACTIONS !== 'undefined' && ACTIONS ? ACTIONS 
   addHoliday: { roles: ['QA', 'ADMIN'], fn: apiAddHoliday_, write: true },
   removeHoliday: { roles: ['QA', 'ADMIN'], fn: apiRemoveHoliday_, write: true },
   saveChecklistItem: { roles: ['QA', 'ADMIN'], fn: apiSaveChecklistItem_, write: true },
+  useShortChecklist: { roles: ['QA'], fn: apiUseShortChecklist_, write: true },
   listUsers: { roles: ['ADMIN'], fn: apiListUsers_ },
   createUser: { roles: ['ADMIN'], fn: apiCreateUser_, write: true },
   updateUser: { roles: ['ADMIN'], fn: apiUpdateUser_, write: true },
@@ -460,7 +461,8 @@ function apiDashboard_(user) {
       if (lv) {
         var fs = findingsByVer[lv.id] || [];
         x.check = { versionId: lv.id, job: jobByVer[lv.id] || '', open: fs.length,
-          fails: fs.filter(function (f) { return f.type === 'LIMIT'; }).length, blocks: fs.filter(function (f) { return f.severity === 'BLOCK'; }).length };
+          fails: fs.filter(function (f) { return f.type === 'LIMIT'; }).length, blocks: fs.filter(function (f) { return f.severity === 'BLOCK'; }).length,
+          pages: lv.actualPages, uploader: lv.uploaderName };
       }
       return x;
     });
@@ -1191,6 +1193,50 @@ function apiRemoveHoliday_(user, p) {
 }
 
 /** p = { id?, docType, item, active } - items are never deleted, only deactivated. */
+/** Short QA verification checklist agreed by QA (Nov 2026). */
+var SHORT_CHECKLISTS = {
+  BMR_BPR: [
+    'Controlled copy: QA stamps present; all pages per index, numbered and legible.',
+    'Correct MFR / BMR version; batch no., batch size and dates correct.',
+    'Every step signed done-by / checked-by and dated at the time of activity (incl. dispensing and line clearance).',
+    'In-process results recorded. Out-of-limit values are flagged by BDVS automatically.',
+    'Deviations / change controls marked and referenced where applicable.',
+    'Corrections as per GDP (single line, sign, date, reason); no overwriting.'
+  ],
+  COA_RAW: [
+    'Current COA format; correct customer, A.R. no., batch no. and dates.',
+    'All tests as per specification reported, with raw data attached for each.',
+    'Analyst and approver signatures and dates present.',
+    'Results transcribed correctly from raw data.',
+    'Corrections as per GDP; no overwriting.'
+  ]
+};
+
+/** Replaces the active QA checklists with the short ones (QA signature). Old items are deactivated, never deleted. */
+function apiUseShortChecklist_(user, p) {
+  if (hashPw_(p.password, user.salt) !== user.pwHash) { throw new Error('Password incorrect.'); }
+  var all = rows_('Checklists');
+  var already = Object.keys(SHORT_CHECKLISTS).every(function (t) {
+    var act = all.filter(function (c) { return c.docType === t && c.active === 'Y'; }).map(function (c) { return c.item; });
+    return act.length === SHORT_CHECKLISTS[t].length && SHORT_CHECKLISTS[t].every(function (x) { return act.indexOf(x) >= 0; });
+  });
+  if (already) { throw new Error('The short checklist is already in use.'); }
+  var off = all.filter(function (c) { return c.active === 'Y' && SHORT_CHECKLISTS[c.docType]; });
+  off.forEach(function (c) { c.active = 'N'; });
+  updateMany_('Checklists', off);
+  var fresh = [];
+  Object.keys(SHORT_CHECKLISTS).forEach(function (t) {
+    SHORT_CHECKLISTS[t].forEach(function (item, i) {
+      fresh.push({ id: newId_('CK'), docType: t, item: item, order: String(i + 1), active: 'Y' });
+    });
+  });
+  insertMany_('Checklists', fresh);
+  audit_(user, 'CHECKLIST_REPLACED', 'Checklist', '', '', off.length + ' items deactivated',
+    'Short QA checklist in use: BMR/BPR ' + SHORT_CHECKLISTS.BMR_BPR.length + ' items, COA ' + SHORT_CHECKLISTS.COA_RAW.length + ' items',
+    String(p.reason || 'QA decision: short verification checklist'), p.client);
+  return { deactivated: off.length, added: fresh.length };
+}
+
 function apiSaveChecklistItem_(user, p) {
   if (!DOC_TYPES[p.docType]) { throw new Error('Unknown document type.'); }
   var text = req_(p.item, 'Checklist item');
