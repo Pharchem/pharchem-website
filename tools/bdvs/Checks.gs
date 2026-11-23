@@ -395,7 +395,10 @@ function limitsForVersion_(v, numericOnly) {
   var d = findById_('Documents', v.docId);
   var b = findById_('Batches', v.batchId);
   var md = parseJson_(b.masterDocs, {});
-  var masters = d.type === 'BMR_BPR' ? [md.BMR] : [md.SPEC, md.COA];
+  // COA: QC types what is printed on the customer's COA format. The specification is used only
+  // when that COA format has no approved limits - combining both asked for every test twice.
+  var approved = function (m) { return m && rows_('Limits').some(function (l) { return l.masterId === m.id && l.status === 'APPROVED'; }); };
+  var masters = d.type === 'BMR_BPR' ? [md.BMR] : (approved(md.COA) ? [md.COA] : [md.SPEC]);
   var seen = {}, out = [];
   masters.forEach(function (m) {
     if (!m) { return; }
@@ -671,9 +674,9 @@ function evaluateVersion_(versionId) {
   var b = findById_('Batches', v.batchId);
   var limits = indexBy_(rows_('Limits'), 'id');
   // Derived findings are recomputed; resolved ones are kept for the record.
-  rows_('Findings').filter(function (f) { return f.versionId === versionId && f.status === 'OPEN' && ['LIMIT', 'UNREADABLE', 'OOT', 'CROSS', 'DATE'].indexOf(f.type) >= 0; })
+  rows_('Findings').filter(function (f) { return f.versionId === versionId && (f.status === 'OPEN' || f.status === 'NOTE') && ['LIMIT', 'UNREADABLE', 'OOT', 'CROSS', 'DATE', 'NR_NOTE'].indexOf(f.type) >= 0; })
     .forEach(function (f) { f.status = 'SUPERSEDED'; update_('Findings', f); });
-  var fails = [];
+  var fails = [], notRecorded = [];
   rows_('Results').filter(function (r) { return r.versionId === versionId && r.check !== 'SUPERSEDED' && r.limitId; }).forEach(function (r) {
     var l = limits[r.limitId];
     var res = checkValue_(l, r);
@@ -685,13 +688,21 @@ function evaluateVersion_(versionId) {
     if (res === 'FAIL') {
       fails.push(where + ': ' + r.value + ' vs limit ' + r.limitText);
       addFinding_(versionId, 'LIMIT', 'BLOCK', 'OUT OF LIMIT - ' + where + ': recorded ' + r.value + ', limit ' + r.limitText, r.id);
+    } else if (res === 'UNREADABLE' && r.confidence === 'entered') {
+      notRecorded.push(r.parameter + (r.stage ? ' [' + r.stage + ']' : '')); // typed as NR by the uploader - shown, not blocking
     } else if (res === 'UNREADABLE') {
-      addFinding_(versionId, 'UNREADABLE', 'WARN', (r.confidence === 'entered' ? 'Recorded as not available (NR) - ' : 'Not found / not legible - ') + where + ' (limit ' + r.limitText + '). Check the scan; enter the value or justify.', r.id);
+      addFinding_(versionId, 'UNREADABLE', 'WARN', 'Not found / not legible - ' + where + ' (limit ' + r.limitText + '). Check the scan; enter the value or justify.', r.id);
     } else if (res === 'CHECK') {
       addFinding_(versionId, 'UNREADABLE', 'WARN', 'Confirm on the scan - ' + where + ': AI read "' + r.value + '" with low confidence (limit ' + r.limitText + ').', r.id);
     }
     if (t) { addFinding_(versionId, 'OOT', 'WARN', 'Out of trend - ' + where + ': ' + t, r.id); }
   });
+  if (notRecorded.length) {
+    addFinding_(versionId, 'NR_NOTE', 'INFO', notRecorded.length + ' value(s) typed as NR (not recorded in the document): ' + notRecorded.join('; ') +
+      '. Confirm on the scan while answering the checklist - no separate justification needed.', '');
+    var nf = rows_('Findings').filter(function (f) { return f.versionId === versionId && f.type === 'NR_NOTE' && f.status === 'OPEN'; });
+    nf.forEach(function (f) { f.status = 'NOTE'; update_('Findings', f); });
+  }
   dateChecks_(v, d, b);
   crossChecks_(b);
   if (fails.length) {
@@ -836,6 +847,8 @@ function apiGetChecks_(user, p) {
   var d = findById_('Documents', v.docId);
   if ((user.role === 'PRD' || user.role === 'QC') && d.dept !== user.role) { throw new Error('Not permitted.'); }
   var job = rows_('AiJobs').filter(function (j) { return j.kind === 'SCAN' && j.refId === v.id; }).pop();
+  var legacy = rows_('Findings').some(function (f) { return f.versionId === v.id && f.status === 'OPEN' && /^Recorded as not available \(NR\)/.test(f.text); });
+  if (legacy && v.status === 'UNDER_VERIFICATION') { withLock_(function () { evaluateVersion_(v.id); }); }
   return {
     aiEnabled: true, valueSource: setting_('VALUE_SOURCE') || 'FORM',
     job: job ? { status: job.status, error: job.error, createdAt: job.createdAt, doneAt: job.doneAt } : null,

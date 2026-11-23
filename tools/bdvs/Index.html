@@ -547,7 +547,7 @@ function openUpload(docId) {
       (f.fields.length ? '<div class="grid2">' + f.fields.map(function (x, i) {
         return '<div><label class="f">' + esc(x.parameter) + (x.stage ? ' <span style="font-weight:400">[' + esc(x.stage) + ']</span>' : '') + (x.unit ? ' (' + esc(x.unit) + ')' : '') + '</label><input type="text" class="upval" data-id="' + x.limitId + '" autocomplete="off"></div>';
       }).join('') + '</div>' : '<p class="small muted">No approved limits for this document yet - nothing to enter.</p>') +
-      '<details style="margin-top:8px" open><summary class="small"><b>Details from the document</b> (fill what is written; leave blank if not on it)</summary><div class="grid2" style="margin-top:6px">' + f.header.map(function (h) {
+      '<details style="margin-top:8px"><summary class="small"><b>Details from the document (optional)</b> - dates, batch size: fill only if you want BDVS to cross-check them</summary><div class="grid2" style="margin-top:6px">' + f.header.map(function (h) {
         return '<div><label class="f">' + esc(h.label) + '</label><input type="' + (h.type === 'date' ? 'date' : 'text') + '" class="uphdr" data-k="' + h.key + '"></div>';
       }).join('') + '</div></details>';
   }).catch(function () {});
@@ -897,6 +897,9 @@ function renderChecks(box, c, versionId, qa) {
   }
   var open = c.findings.filter(function (f) { return f.status === 'OPEN'; });
   var done = c.findings.filter(function (f) { return f.status === 'RESOLVED'; });
+  c.findings.filter(function (f) { return f.status === 'NOTE'; }).forEach(function (f) {
+    html += '<div class="small" style="padding:7px 10px;margin-bottom:8px;border:1px solid var(--line);border-radius:8px;background:var(--grayb)"><span class="chip c-gray">Note</span> ' + esc(f.text) + '</div>';
+  });
   if (open.length) {
     html += '<div style="border:1px solid var(--line);border-radius:8px;margin-bottom:8px">' + open.map(function (f) {
       return '<div style="padding:7px 10px;border-bottom:1px solid var(--line);background:' + (f.severity === 'BLOCK' ? '#fff1f2' : '#fffbeb') + '"><span class="chip ' + (f.severity === 'BLOCK' ? 'c-bad' : 'c-warn') + '">' + (f.severity === 'BLOCK' ? 'Blocks acceptance' : 'Review') + '</span> ' +
@@ -911,7 +914,7 @@ function renderChecks(box, c, versionId, qa) {
     html += '<div class="tw" style="max-height:40vh"><table><thead><tr><th>Parameter</th><th>Recorded</th><th>Limit</th><th>Page</th><th>Check</th>' + (qa ? '<th></th>' : '') + '</tr></thead><tbody>' + res.map(function (r) {
       return '<tr class="small"><td>' + esc(r.parameter) + (r.stage && r.stage !== 'OTHER' ? '<br><span class="muted">' + esc(r.stage) + '</span>' : '') + '</td><td><b>' + (esc(r.value) || '<span class="muted">-</span>') + '</b>' +
         (r.correctedBy ? '<br><span class="muted">corrected by ' + esc(r.correctedBy) + '</span>' : r.confidence === 'low' ? '<br><span class="muted">low confidence</span>' : r.confidence === 'entered' ? '<br><span class="muted">typed at upload</span>' : '') + '</td><td>' + esc(r.limitText) + '</td><td>' + esc(r.page) + '</td><td>' +
-        chip(CHECK_CHIP, r.check) + (r.oot === 'Y' ? ' <span class="chip c-warn" title="' + esc(r.ootText) + '">Out of trend</span>' : '') + '</td>' +
+        (r.check === 'UNREADABLE' && r.confidence === 'entered' ? '<span class="chip c-gray">NR (not recorded)</span>' : chip(CHECK_CHIP, r.check)) + (r.oot === 'Y' ? ' <span class="chip c-warn" title="' + esc(r.ootText) + '">Out of trend</span>' : '') + '</td>' +
         (qa ? '<td>' + (r.limitId ? '<button class="btn sm sec" onclick="correctResult(\'' + r.id + '\',\'' + esc(r.parameter).replace(/'/g, '') + '\',\'' + versionId + '\')">Correct</button>' : '') + '</td>' : '') + '</tr>';
     }).join('') + '</tbody></table></div>';
   }
