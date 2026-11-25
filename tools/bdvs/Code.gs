@@ -1161,7 +1161,7 @@ function apiSaveSetting_(user, p) {
     });
   }
   if (['UPLOAD_DAYS', 'VERIFY_HOURS', 'VERIFY_REMINDER_HOURS', 'REUPLOAD_REMINDER_HOURS', 'HARDCOPY_DAYS', 'REGISTER_MAX_AGE_DAYS',
-    'DAILY_REMINDER_HOUR', 'MAX_FILE_MB', 'SESSION_TIMEOUT_MIN', 'PASSWORD_EXPIRY_DAYS', 'LOCKOUT_ATTEMPTS']
+    'DAILY_REMINDER_HOUR', 'MAX_FILE_MB', 'SESSION_TIMEOUT_MIN', 'PASSWORD_EXPIRY_DAYS', 'LOCKOUT_ATTEMPTS', 'GMP_SYNC_HOUR']
     .indexOf(p.key) >= 0 && !/^\d+$/.test(value)) { throw new Error('Enter a whole number.'); }
   if (p.key === 'UPLOAD_DAYS_MODE' && ['CALENDAR', 'WORKING'].indexOf(value) < 0) { throw new Error('Use CALENDAR or WORKING.'); }
   if (p.key === 'VALUE_SOURCE' && ['FORM', 'AI'].indexOf(value) < 0) { throw new Error('Use FORM or AI.'); }
@@ -1329,6 +1329,7 @@ function runReminders() {
   var lock = LockService.getScriptLock();
   if (!lock.tryLock(60000)) { return; }
   try {
+    try { maybeGmpSync_(); } catch (e) { /* the sync must never stop the reminders */ }
     var now = Date.now();
     var hol = holidayMap_();
     var dailyHour = Number(setting_('DAILY_REMINDER_HOUR'));

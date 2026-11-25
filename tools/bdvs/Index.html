@@ -656,6 +656,7 @@ function submitUpload(confirmDuplicate) {
       }
       closeModal(b);
       toast('Uploaded as version ' + r.versionNo + '. QA has been notified (verification due ' + fDT(r.verifyDueAt) + ').' + (r.aiQueued ? ' Automatic check started - results in "Automatic check" within about an hour.' : r.valuesChecked ? ' Values recorded for QA.' : '') + (Number(r.lateHours) > 0 ? ' Marked LATE by ' + r.lateHours + ' h.' : ''));
+      if (r.aiQueued) { call('runAiNow', {}).catch(function () {}); } // start the reading at once instead of waiting for the timer
       go(S.view);
     })
     .catch(function (e) { busy(b, false); showErr('uperr', e); });

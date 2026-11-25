@@ -25,7 +25,7 @@ var ACTIONS = (typeof ACTIONS !== 'undefined' && ACTIONS) || {};
 SHEETS.Limits = ['id', 'masterId', 'masterTitle', 'productCode', 'kind', 'parameter', 'stage', 'unit', 'limitType',
   'low', 'high', 'textSpec', 'order', 'status', 'source', 'approvedBy', 'approvedAt', 'updatedAt', 'verify', 'verifyNote'];
 SHEETS.AiJobs = ['id', 'kind', 'refId', 'batchId', 'status', 'apiBatchId', 'createdAt', 'submittedAt', 'doneAt',
-  'error', 'inputTokens', 'outputTokens'];
+  'error', 'inputTokens', 'outputTokens', 'retries'];
 SHEETS.Results = ['id', 'versionId', 'docId', 'batchId', 'productCode', 'customer', 'docType', 'parameter', 'stage',
   'value', 'numValue', 'unit', 'page', 'confidence', 'limitId', 'limitText', 'check', 'oot', 'ootText',
   'correctedBy', 'correctionReason', 'createdAt'];
@@ -36,6 +36,7 @@ DEFAULT_SETTINGS.VALUE_SOURCE = ['FORM', 'FORM = PRD / QC type the key values wh
 DEFAULT_SETTINGS.AI_ENABLED = ['YES', 'YES = allow Claude API calls (limit extraction, and scan reading when VALUE_SOURCE = AI)'];
 DEFAULT_SETTINGS.AI_MODEL = ['claude-haiku-5-5', 'Claude model that reads scans when VALUE_SOURCE = AI (Haiku = lowest cost)'];
 DEFAULT_SETTINGS.LIMITS_MODEL = ['claude-opus-5-5', 'Claude model for the one-time reading of limits from master documents'];
+DEFAULT_SETTINGS.GMP_SYNC_HOUR = ['6', 'Hour (IST, 0-23) at which the GMP folder is re-scanned daily and limits for new documents are read automatically; empty = off'];
 DEFAULT_SETTINGS.KEY_PARAMS_ONLY = ['YES', 'YES = the upload form asks only the key values below; NO = every approved numeric limit'];
 DEFAULT_SETTINGS.KEY_PARAMS_BMR = ['pH | Al2O3, claim | viscosity | free chlorine', 'BMR values Production types (groups separated by |, alternative words by commas). Only the LAST stage of each group is asked.'];
 DEFAULT_SETTINGS.KEY_PARAMS_COA = ['pH | assay | chloride | neutraliz', 'COA values QC types (groups separated by |, alternative words by commas). Every matching test is asked.'];
@@ -49,7 +50,7 @@ DEFAULT_SETTINGS.TREND_BATCHES = ['30', 'Number of previous accepted batches use
 ACTIONS.aiStatus = { roles: ['QA', 'ADMIN'], fn: apiAiStatus_ };
 ACTIONS.setApiKey = { roles: ['ADMIN'], fn: apiSetApiKey_, write: true };
 ACTIONS.queueLimitExtraction = { roles: ['QA', 'ADMIN'], fn: apiQueueLimitExtraction_, write: true };
-ACTIONS.runAiNow = { roles: ['QA', 'ADMIN'], fn: function () {
+ACTIONS.runAiNow = { roles: ROLES, fn: function () {
   var lock = LockService.getScriptLock();
   if (!lock.tryLock(5000)) { throw new Error('The automatic checks are already running - try again in a few minutes.'); }
   try { runAiQueue_(); } finally { lock.releaseLock(); }
@@ -140,6 +141,42 @@ function apiQueueLimitExtraction_(user, p) {
   return { queued: queued };
 }
 
+/** A failed job is retried once before giving up (temporary API problems heal themselves). */
+function failJob_(job, label, msg) {
+  if (Number(job.retries || 0) < 1) {
+    job.retries = String(Number(job.retries || 0) + 1);
+    job.status = 'PENDING'; job.apiBatchId = ''; job.error = 'retrying after: ' + msg;
+    return;
+  }
+  job.status = 'FAILED'; job.error = msg;
+  if (job.kind === 'SCAN') { addFinding_(job.refId, 'AI', 'WARN', label + msg + '. Verify the values on the scan manually.'); }
+}
+
+/** Daily GMP sync (called from the hourly reminders timer): re-scans the GMP folder and
+ *  queues limit reading + double-check for new or changed master documents. QA only approves. */
+function maybeGmpSync_() {
+  var hour = String(setting_('GMP_SYNC_HOUR') || '').trim();
+  if (hour === '' || istHour_(Date.now()) !== Number(hour)) { return; }
+  if (!setting_('GMP_FOLDER_ID')) { return; }
+  var props = PropertiesService.getScriptProperties();
+  var today = istYmd_(Date.now());
+  if (props.getProperty('GMP_SYNC_LAST') === today) { return; }
+  props.setProperty('GMP_SYNC_LAST', today);
+  var res = apiImportDocMaster_(null, { client: 'daily GMP sync' });
+  var queued = 0, checked = 0;
+  if (aiOn_()) {
+    queued = apiQueueLimitExtraction_(null, { client: 'daily GMP sync' }).queued;
+    checked = apiQueueLimitVerify_(null, { client: 'daily GMP sync' }).queued;
+  }
+  if (res.added || queued) {
+    sendMail_('GMPSYNC|' + today, 'GMP_SYNC', '', '', deptEmails_('QA'), [],
+      'BDVS: ' + (res.added ? res.added + ' new GMP master document(s) indexed' : queued + ' document(s) queued for limit reading'),
+      mailBody_('GMP folder sync', 'The GMP folder was re-scanned automatically: <b>' + res.added + ' new</b>, ' + res.updated + ' refreshed, ' + res.retired + ' removed. ' +
+        (queued ? 'Limits for <b>' + queued + '</b> document(s) are being read and will appear under Settings &gt; Limits as drafts for QA approval (with the AI double-check).' :
+          'No new limits needed.'), ''));
+  }
+}
+
 /** Timer entry point (every 5 minutes). */
 function runAiQueue() {
   cacheReset_();
@@ -179,8 +216,7 @@ function submitPending_() {
       requests.push({ custom_id: j.id, params: params });
       used.push(j);
     } catch (e) {
-      j.status = 'FAILED'; j.error = String(e.message || e); j.doneAt = iso_(Date.now()); update_('AiJobs', j);
-      if (j.kind === 'SCAN') { addFinding_(j.refId, 'AI', 'WARN', 'Automatic check could not start: ' + j.error + '. Check this document manually.'); }
+      failJob_(j, 'Automatic check could not start: ', String(e.message || e));
     }
   });
   if (!requests.length) { return 0; }
@@ -217,8 +253,7 @@ function pollBatches_() {
         if (job.kind === 'LIMITS') { storeLimits_(job.refId, data); } else if (job.kind === 'LIMITS_VERIFY') { storeVerify_(job.refId, data); } else { storeScan_(job.refId, data); }
         job.status = 'DONE';
       } catch (e) {
-        job.status = 'FAILED'; job.error = String(e.message || e);
-        if (job.kind === 'SCAN') { addFinding_(job.refId, 'AI', 'WARN', 'Automatic check failed (' + job.error + '). Verify every value manually.'); }
+        failJob_(job, 'Automatic check failed: ', String(e.message || e));
       }
       job.doneAt = iso_(Date.now());
       update_('AiJobs', job);
