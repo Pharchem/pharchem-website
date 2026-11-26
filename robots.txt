@@ -1,4 +1,7 @@
 User-agent: *
 Allow: /
+Disallow: /bdvs/
+Disallow: /attendance/
+Disallow: /tools/
 
 Sitemap: https://pharchem.in/sitemap.xml
