@@ -25,16 +25,18 @@ var ACTIONS = (typeof ACTIONS !== 'undefined' && ACTIONS) || {};
 SHEETS.Limits = ['id', 'masterId', 'masterTitle', 'productCode', 'kind', 'parameter', 'stage', 'unit', 'limitType',
   'low', 'high', 'textSpec', 'order', 'status', 'source', 'approvedBy', 'approvedAt', 'updatedAt', 'verify', 'verifyNote'];
 SHEETS.AiJobs = ['id', 'kind', 'refId', 'batchId', 'status', 'apiBatchId', 'createdAt', 'submittedAt', 'doneAt',
-  'error', 'inputTokens', 'outputTokens', 'retries'];
+  'error', 'inputTokens', 'outputTokens', 'retries', 'model', 'reading'];
 SHEETS.Results = ['id', 'versionId', 'docId', 'batchId', 'productCode', 'customer', 'docType', 'parameter', 'stage',
   'value', 'numValue', 'unit', 'page', 'confidence', 'limitId', 'limitText', 'check', 'oot', 'ootText',
-  'correctedBy', 'correctionReason', 'createdAt'];
+  'correctedBy', 'correctionReason', 'createdAt', 'priorValue'];
 SHEETS.Findings = ['id', 'versionId', 'batchId', 'docType', 'type', 'severity', 'text', 'resultId', 'status',
   'devRef', 'resolution', 'resolvedBy', 'resolvedAt', 'createdAt'];
 
 DEFAULT_SETTINGS.VALUE_SOURCE = ['FORM', 'FORM = PRD / QC type the key values while uploading (free); AI = Claude reads them from the scan (paid, API key needed)'];
 DEFAULT_SETTINGS.AI_ENABLED = ['YES', 'YES = allow Claude API calls (limit extraction, and scan reading when VALUE_SOURCE = AI)'];
 DEFAULT_SETTINGS.AI_MODEL = ['claude-haiku-5-5', 'Claude model that reads scans when VALUE_SOURCE = AI (Haiku = lowest cost)'];
+DEFAULT_SETTINGS.AI_MODEL_2 = ['claude-sonnet-5-5', 'Stronger (costlier) model used only for the second reading of a doubtful scan'];
+DEFAULT_SETTINGS.SCAN_SECOND_OPINION = ['YES', 'YES = when the first reading is unsure about a handwritten value, cannot find it, or finds it out of limit, the scan is read again by AI_MODEL_2 and the two readings are compared before QA is alerted'];
 DEFAULT_SETTINGS.LIMITS_MODEL = ['claude-opus-5-5', 'Claude model for the one-time reading of limits from master documents'];
 DEFAULT_SETTINGS.GMP_SYNC_HOUR = ['6', 'Hour (IST, 0-23) at which the GMP folder is re-scanned daily and limits for new documents are read automatically; empty = off'];
 DEFAULT_SETTINGS.KEY_PARAMS_ONLY = ['YES', 'YES = the upload form asks only the key values below; NO = every approved numeric limit'];
@@ -72,7 +74,9 @@ ACTIONS.skipAiCheck = { roles: ['QA'], fn: function (u, p) {
   if (!v) { throw new Error('Version not found.'); }
   var reason = req_(p.reason, 'Reason');
   var f = addFinding_(v.id, 'SKIP_AI', 'WARN', 'QA proceeded without waiting for the automatic check');
-  return apiResolveFinding_(u, { findingId: f.id, resolution: reason, client: p.client });
+  var ok = apiResolveFinding_(u, { findingId: f.id, resolution: reason, client: p.client });
+  evaluateVersion_(v.id); // a value held for the second reading becomes a normal out-of-limit block
+  return ok;
 }, write: true };
 
 // ---------------------------------------------------------------------------
@@ -99,6 +103,7 @@ function apiAiStatus_() {
   var lim = rows_('Limits');
   return {
     keySet: !!apiKey_(), enabled: setting_('AI_ENABLED') !== 'NO', model: setting_('AI_MODEL'), valueSource: setting_('VALUE_SOURCE') || 'FORM', jobs: c,
+    model2: setting_('SCAN_SECOND_OPINION') === 'NO' ? '' : setting_('AI_MODEL_2'),
     recentFailures: jobs.filter(function (j) { return j.status === 'FAILED'; }).slice(-5).map(strip_),
     tokensIn: tokensIn, tokensOut: tokensOut,
     limits: { draft: lim.filter(function (l) { return l.status === 'DRAFT'; }).length, approved: lim.filter(function (l) { return l.status === 'APPROVED'; }).length }
@@ -109,11 +114,16 @@ function apiAiStatus_() {
 // Job queue (Message Batches API)
 // ---------------------------------------------------------------------------
 
-function queueJob_(kind, refId, batchId) {
-  var open = rows_('AiJobs').filter(function (j) { return j.kind === kind && j.refId === refId && (j.status === 'PENDING' || j.status === 'SUBMITTED'); });
+/** extra: { model, reading, afterJobId } - a second reading is queued while the first job is still being finalised. */
+function queueJob_(kind, refId, batchId, extra) {
+  extra = extra || {};
+  var open = rows_('AiJobs').filter(function (j) {
+    return j.kind === kind && j.refId === refId && (j.status === 'PENDING' || j.status === 'SUBMITTED') && j.id !== extra.afterJobId;
+  });
   if (open.length) { return open[0]; }
   return insert_('AiJobs', { id: newId_('J'), kind: kind, refId: refId, batchId: batchId || '', status: 'PENDING', apiBatchId: '',
-    createdAt: iso_(Date.now()), submittedAt: '', doneAt: '', error: '', inputTokens: '', outputTokens: '' });
+    createdAt: iso_(Date.now()), submittedAt: '', doneAt: '', error: '', inputTokens: '', outputTokens: '', retries: '',
+    model: extra.model || '', reading: extra.reading || '1' });
 }
 
 /** Called after every upload (from Code.gs). */
@@ -250,10 +260,14 @@ function pollBatches_() {
         var data = JSON.parse(text);
         job.inputTokens = String(msg.usage ? msg.usage.input_tokens : '');
         job.outputTokens = String(msg.usage ? msg.usage.output_tokens : '');
-        if (job.kind === 'LIMITS') { storeLimits_(job.refId, data); } else if (job.kind === 'LIMITS_VERIFY') { storeVerify_(job.refId, data); } else { storeScan_(job.refId, data); }
-        job.status = 'DONE';
+        job.status = 'DONE'; // before storing: the evaluation must not see this very job as "still running"
+        if (job.kind === 'LIMITS') { storeLimits_(job.refId, data); } else if (job.kind === 'LIMITS_VERIFY') { storeVerify_(job.refId, data); } else { storeScan_(job.refId, data, job); }
       } catch (e) {
         failJob_(job, 'Automatic check failed: ', String(e.message || e));
+        if (job.kind === 'SCAN' && job.status === 'FAILED') {
+          // a second reading that never arrives must not keep an out-of-limit value "soft"
+          try { evaluateVersion_(job.refId); } catch (e2) { /* keep the job bookkeeping */ }
+        }
       }
       job.doneAt = iso_(Date.now());
       update_('AiJobs', job);
@@ -508,13 +522,16 @@ function scanRequest_(job) {
     (list ? 'Read the recorded (actual) result for each of these parameters. Report one entry per limitId; if a parameter was recorded several times (e.g. re-checks), report the final recorded value and mention the others in observations:\n' + list
       : 'No approved limits exist yet for this document; leave "values" empty and report all recorded results in otherValues.') +
     '\n\nAlso fill the header from the document (dates as YYYY-MM-DD; empty string if not present) and list any other recorded numeric results in otherValues. ' +
-    'In observations, report documentation problems you can see: blank fields or columns, missing signatures or dates, overwriting, unclear corrections, missing pages per the index, values that look inconsistent. Do not judge whether values meet limits - the system does that.' });
+    'In observations, report documentation problems you can see: blank fields or columns, missing signatures or dates, overwriting, unclear corrections, missing pages per the index, values that look inconsistent. Do not judge whether values meet limits - the system does that.' +
+    (job.reading === '2' ? '\n\nThis is an independent second reading of a scan whose first reading was uncertain. Read every requested value digit by digit and report honestly what is written.' : '') });
   return baseParams_('high', SCAN_SCHEMA_,
     'You read scanned pharmaceutical batch records (handwritten Batch Manufacturing Records and typed Certificates of Analysis with raw data) for a QA checking system. ' +
     'Transcribe exactly what is written; never guess a value that is not legible. If a value is illegible or not recorded, set found=false, value="" and numericValue=null. ' +
     'numericValue is the number in the same unit as the limit (e.g. "6.56" -> 6.56; "18.42%" -> 18.42; "Less than 1 PPM" -> 1). Page numbers are 1-based across the whole upload. ' +
-    'Set confidence=low for any handwriting you are unsure about.',
-    content);
+    'Handwriting rules: report the handwritten RESULT, never the pre-printed limit or specification next to it. Look carefully at decimal points and at digits that are easily confused ' +
+    '(1/7, 4/9, 0/6, 5/6/8, 3/8). If a digit could reasonably be read two ways, put the most likely reading in value and set confidence=low. Use confidence=high only when every digit is unambiguous; ' +
+    'medium when the writing is readable but untidy. If an entry was corrected (struck through and rewritten), report the final value and describe the correction in observations.',
+    content, job.model || '');
 }
 
 // ---------------------------------------------------------------------------
@@ -700,18 +717,30 @@ function apiApproveLimits_(user, p) {
 // Checking a scan
 // ---------------------------------------------------------------------------
 
-function storeScan_(versionId, data) {
+/** The stronger model used for a second reading; '' when the feature is off or no stronger model is configured. */
+function secondModel_(firstModel) {
+  if (setting_('SCAN_SECOND_OPINION') === 'NO') { return ''; }
+  var m2 = String(setting_('AI_MODEL_2') || '').trim();
+  return m2 && m2 !== (firstModel || setting_('AI_MODEL')) ? m2 : '';
+}
+
+function storeScan_(versionId, data, job) {
   var v = findById_('Versions', versionId);
   var d = findById_('Documents', v.docId);
   var b = findById_('Batches', v.batchId);
   var limits = indexBy_(limitsForVersion_(v, true), 'id');
   var now = iso_(Date.now());
+  var second = !!(job && job.reading === '2');
+  // First-reading values, kept for comparison when this is the second reading.
+  var prior = {};
+  rows_('Results').filter(function (r) { return r.versionId === versionId && r.check !== 'SUPERSEDED' && r.limitId && r.confidence !== 'entered' && !r.correctedBy; })
+    .forEach(function (r) { prior[r.limitId] = r; });
   updateMany_('Results', rows_('Results').filter(function (r) { return r.versionId === versionId && r.check !== 'SUPERSEDED'; })
     .map(function (r) { r.check = 'SUPERSEDED'; return r; }));
   updateMany_('Findings', rows_('Findings').filter(function (f) { return f.versionId === versionId && f.type === 'AI_NOTE' && f.status === 'NOTE'; })
     .map(function (f) { f.status = 'SUPERSEDED'; return f; }));
   var base = { versionId: versionId, docId: d.id, batchId: b.id, productCode: b.productCode, customer: b.customer, docType: d.type,
-    correctedBy: '', correctionReason: '', createdAt: now };
+    correctedBy: '', correctionReason: '', createdAt: now, priorValue: '' };
   var out = [];
   // Header fields
   var h = data.header || {};
@@ -727,15 +756,19 @@ function storeScan_(versionId, data) {
     var l = limits[x.limitId];
     if (!l || reported[l.id]) { return; }
     reported[l.id] = true;
-    out.push(Object.assign({ id: newId_('RS'), parameter: l.parameter, stage: l.stage, value: x.found ? String(x.value) : '',
+    var row = Object.assign({ id: newId_('RS'), parameter: l.parameter, stage: l.stage, value: x.found ? String(x.value) : '',
       numValue: x.found && x.numericValue != null ? String(x.numericValue) : '', unit: l.unit, page: String(x.page || ''),
-      confidence: x.confidence, limitId: l.id, limitText: limitText_(l), check: '', oot: '', ootText: '' }, base));
+      confidence: x.confidence, limitId: l.id, limitText: limitText_(l), check: '', oot: '', ootText: '' }, base);
+    if (second) { compareReadings_(row, prior[l.id]); }
+    out.push(row);
   });
   Object.keys(limits).forEach(function (id) {
     if (reported[id] || limits[id].stage === 'INFO') { return; }
     var l = limits[id];
-    out.push(Object.assign({ id: newId_('RS'), parameter: l.parameter, stage: l.stage, value: '', numValue: '', unit: l.unit,
-      page: '', confidence: '', limitId: l.id, limitText: limitText_(l), check: '', oot: '', ootText: '' }, base));
+    var miss = Object.assign({ id: newId_('RS'), parameter: l.parameter, stage: l.stage, value: '', numValue: '', unit: l.unit,
+      page: '', confidence: '', limitId: l.id, limitText: limitText_(l), check: '', oot: '', ootText: '' }, base);
+    if (second) { compareReadings_(miss, prior[l.id]); }
+    out.push(miss);
   });
   insertMany_('Results', out);
   // Documentation remarks from the reading: one non-blocking note for QA, who reviews the scan anyway.
@@ -744,7 +777,30 @@ function storeScan_(versionId, data) {
     var f = addFinding_(versionId, 'AI_NOTE', 'INFO', 'Noticed while reading the scan (check while answering the checklist): ' + obs.join(' | '), '');
     if (f && f.status === 'OPEN') { f.status = 'NOTE'; update_('Findings', f); }
   }
+  // Doubt after the first reading -> an independent second reading by the stronger model, queued BEFORE the
+  // evaluation so that an out-of-limit value is held back (not emailed) until both readings have been seen.
+  if (job && !second) {
+    var m2 = secondModel_(job.model);
+    var doubt = m2 && out.some(function (r) {
+      if (!r.limitId) { return false; }
+      var c = checkValue_(limits[r.limitId], r);
+      return c === 'FAIL' || c === 'CHECK' || c === 'UNREADABLE' || r.confidence === 'medium';
+    });
+    if (doubt) { queueJob_('SCAN', versionId, b.id, { model: m2, reading: '2', afterJobId: job.id }); }
+  }
   evaluateVersion_(versionId);
+}
+
+/** Second reading vs first: agreement makes the value certain; disagreement marks it for QA with both readings shown. */
+function compareReadings_(row, first) {
+  if (!first) { return; }
+  var a = first.value !== '' ? first.value : '', bb = row.value;
+  if (a === '' && bb === '') { return; }
+  if (a === '' || bb === '') { row.priorValue = a === '' ? '(not found)' : a; if (bb !== '') { row.confidence = 'low'; } return; }
+  var na = Number(first.numValue), nb = Number(row.numValue);
+  var same = (!isNaN(na) && !isNaN(nb) && first.numValue !== '' && row.numValue !== '') ? na === nb : norm_(a) === norm_(bb);
+  if (same) { row.confidence = 'high'; row.priorValue = ''; }
+  else { row.confidence = 'low'; row.priorValue = a; }
 }
 
 /** (Re)computes limit checks, trend, cross-checks and date checks for a version. */
@@ -756,7 +812,13 @@ function evaluateVersion_(versionId) {
   // Derived findings are recomputed; resolved ones are kept for the record.
   rows_('Findings').filter(function (f) { return f.versionId === versionId && (f.status === 'OPEN' || f.status === 'NOTE') && ['LIMIT', 'UNREADABLE', 'OOT', 'CROSS', 'DATE', 'NR_NOTE'].indexOf(f.type) >= 0; })
     .forEach(function (f) { f.status = 'SUPERSEDED'; update_('Findings', f); });
-  var fails = [], notRecorded = [], toConfirm = [];
+  var fails = [], notRecorded = [], toConfirm = [], held = [];
+  // A second reading on its way means a first-reading "out of limit" may simply be a misread digit: hold the
+  // alarm (no BLOCK, no email) until both readings are in. QA's "proceed without automatic check" ends the hold.
+  var skipped = rows_('Findings').some(function (f) { return f.versionId === versionId && f.type === 'SKIP_AI' && f.status === 'RESOLVED'; });
+  var secondPending = !skipped && rows_('AiJobs').some(function (j) {
+    return j.kind === 'SCAN' && j.refId === versionId && j.reading === '2' && (j.status === 'PENDING' || j.status === 'SUBMITTED');
+  });
   rows_('Results').filter(function (r) { return r.versionId === versionId && r.check !== 'SUPERSEDED' && r.limitId; }).forEach(function (r) {
     var l = limits[r.limitId];
     var res = checkValue_(l, r);
@@ -765,18 +827,29 @@ function evaluateVersion_(versionId) {
     r.oot = t ? 'Y' : 'N'; r.ootText = t || '';
     update_('Results', r);
     var where = r.parameter + (r.stage ? ' [' + r.stage + ']' : '') + (r.page ? ' (p.' + r.page + ')' : '');
-    if (res === 'FAIL') {
+    var fromScan = r.confidence !== 'entered' && !r.correctedBy;
+    if (res === 'FAIL' && secondPending && fromScan) {
+      held.push(where + ': read "' + r.value + '", outside limit ' + r.limitText);
+    } else if (res === 'FAIL') {
       fails.push(where + ': ' + r.value + ' vs limit ' + r.limitText);
-      addFinding_(versionId, 'LIMIT', 'BLOCK', 'OUT OF LIMIT - ' + where + ': recorded ' + r.value + ', limit ' + r.limitText, r.id);
+      addFinding_(versionId, 'LIMIT', 'BLOCK', 'OUT OF LIMIT - ' + where + ': recorded ' + r.value + ', limit ' + r.limitText +
+        (r.priorValue ? ' (first reading: ' + r.priorValue + ')' : '') +
+        (fromScan ? '. If the handwriting was misread, use "Correct"; otherwise record the deviation / OOS reference.' : ''), r.id);
     } else if (res === 'UNREADABLE' && r.confidence === 'entered') {
       notRecorded.push(r.parameter + (r.stage ? ' [' + r.stage + ']' : '')); // typed as NR by the uploader - shown, not blocking
     } else if (res === 'UNREADABLE') {
-      toConfirm.push(where + ': not found / not legible');
+      toConfirm.push(where + ': not found / not legible' + (r.priorValue && r.priorValue !== '(not found)' ? ' on the second reading; the first reading saw "' + r.priorValue + '"' : ''));
     } else if (res === 'CHECK') {
-      toConfirm.push(where + ': read "' + r.value + '" (unsure, within limit ' + r.limitText + ')');
+      toConfirm.push(where + (r.priorValue ? ': the two readings differ - first "' + r.priorValue + '", second "' + r.value + '" (second is within limit ' + r.limitText + ')'
+        : ': read "' + r.value + '" (unsure, within limit ' + r.limitText + ')'));
     }
     if (t) { addFinding_(versionId, 'OOT', 'WARN', 'Out of trend - ' + where + ': ' + t, r.id); }
   });
+  if (held.length) {
+    var hf = addFinding_(versionId, 'NR_NOTE', 'INFO', 'Being re-read by the stronger model before it is raised - ' + held.length + ' value(s) looked out of limit on the first reading: ' + held.join('; ') +
+      '. Nothing to do yet; the result appears here in a few minutes.', '');
+    if (hf && hf.status === 'OPEN') { hf.status = 'NOTE'; update_('Findings', hf); }
+  }
   if (toConfirm.length) {
     var cf = addFinding_(versionId, 'NR_NOTE', 'INFO', 'Confirm on the scan - the automatic reading was not sure about ' + toConfirm.length + ' value(s): ' + toConfirm.join('; ') +
       '. Use "Correct" if a value is misread; no separate justification needed.', '');
@@ -936,7 +1009,7 @@ function apiGetChecks_(user, p) {
   if (legacy && v.status === 'UNDER_VERIFICATION') { withLock_(function () { evaluateVersion_(v.id); }); }
   return {
     aiEnabled: true, valueSource: setting_('VALUE_SOURCE') || 'FORM',
-    job: job ? { status: job.status, error: job.error, createdAt: job.createdAt, doneAt: job.doneAt } : null,
+    job: job ? { status: job.status, error: job.error, createdAt: job.createdAt, doneAt: job.doneAt, reading: job.reading || '1', model: job.model || '' } : null,
     results: rows_('Results').filter(function (r) { return r.versionId === v.id && r.check !== 'SUPERSEDED'; }).map(strip_),
     findings: rows_('Findings').filter(function (f) { return f.versionId === v.id && f.status !== 'SUPERSEDED'; }).map(strip_)
   };
@@ -977,10 +1050,19 @@ function acceptBlockers_(versionId) {
   var out = [];
   var job = rows_('AiJobs').filter(function (j) { return j.kind === 'SCAN' && j.refId === versionId; }).pop();
   if (job && (job.status === 'PENDING' || job.status === 'SUBMITTED')) {
-    out.push('The automatic check is still running (usually under an hour). Wait for it, or record a justification under "Proceed without automatic check".');
+    out.push(job.reading === '2' ? 'The second reading of a doubtful value is still running (a few minutes). Wait for it, or record a justification under "Proceed without automatic check".'
+      : 'The automatic check is still running (usually a few minutes). Wait for it, or record a justification under "Proceed without automatic check".');
     var skip = rows_('Findings').filter(function (f) { return f.versionId === versionId && f.type === 'SKIP_AI' && f.status === 'RESOLVED'; })[0];
     if (skip) { out.pop(); }
   }
+  // Belt and braces: an out-of-limit value can never be accepted without a resolved LIMIT finding, whatever the job state.
+  var resolvedFor = {};
+  rows_('Findings').forEach(function (f) { if (f.versionId === versionId && f.type === 'LIMIT' && f.status === 'RESOLVED') { resolvedFor[f.resultId] = true; } });
+  rows_('Results').filter(function (r) { return r.versionId === versionId && r.check === 'FAIL' && !resolvedFor[r.id]; }).forEach(function (r) {
+    if (!rows_('Findings').some(function (f) { return f.resultId === r.id && f.type === 'LIMIT' && f.status === 'OPEN'; })) {
+      out.push('Out of limit on the first reading (' + r.parameter + ' = ' + r.value + ') - wait for the second reading, or use "Proceed without automatic check" to record the deviation now.');
+    }
+  });
   rows_('Findings').filter(function (f) { return f.versionId === versionId && f.status === 'OPEN'; }).forEach(function (f) {
     out.push((f.severity === 'BLOCK' ? 'Needs deviation/OOS ref: ' : 'Needs QA justification: ') + f.text);
   });

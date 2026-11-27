@@ -898,7 +898,9 @@ function renderChecks(box, c, versionId, qa) {
   var html = '';
   var running = c.job && (c.job.status === 'PENDING' || c.job.status === 'SUBMITTED');
   if (running) {
-    html += '<div class="card small" style="padding:10px;background:#f8fafc"><span class="spin"></span> Claude is reading the scan (started ' + fDT(c.job.createdAt) + '; usually under an hour). Values will appear here.' +
+    html += '<div class="card small" style="padding:10px;background:#f8fafc"><span class="spin"></span> ' + (c.job.reading === '2'
+      ? 'The first reading was unsure about a value, so the scan is being read a second time by the stronger model (started ' + fDT(c.job.createdAt) + '; a few minutes). The values below are from the first reading and will update.'
+      : 'Claude is reading the scan (started ' + fDT(c.job.createdAt) + '; usually a few minutes). Values will appear here.') +
       (qa ? ' <button class="btn sm sec" onclick="skipAi(\'' + versionId + '\')">Proceed without automatic check</button>' : '') + '</div>';
   }
   var open = c.findings.filter(function (f) { return f.status === 'OPEN'; });
@@ -919,7 +921,9 @@ function renderChecks(box, c, versionId, qa) {
   if (res.length) {
     html += '<div class="tw" style="max-height:40vh"><table><thead><tr><th>Parameter</th><th>Recorded</th><th>Limit</th><th>Page</th><th>Check</th>' + (qa ? '<th></th>' : '') + '</tr></thead><tbody>' + res.map(function (r) {
       return '<tr class="small"><td>' + esc(r.parameter) + (r.stage && r.stage !== 'OTHER' ? '<br><span class="muted">' + esc(r.stage) + '</span>' : '') + '</td><td><b>' + (esc(r.value) || '<span class="muted">-</span>') + '</b>' +
-        (r.correctedBy ? '<br><span class="muted">corrected by ' + esc(r.correctedBy) + '</span>' : r.confidence === 'low' ? '<br><span class="muted">low confidence</span>' : r.confidence === 'entered' ? '<br><span class="muted">typed at upload</span>' : '') + '</td><td>' + esc(r.limitText) + '</td><td>' + esc(r.page) + '</td><td>' +
+        (r.correctedBy ? '<br><span class="muted">corrected by ' + esc(r.correctedBy) + '</span>'
+          : r.priorValue ? '<br><span style="color:var(--warn)">1st reading: ' + esc(r.priorValue) + ' - confirm on the scan</span>'
+          : r.confidence === 'low' ? '<br><span class="muted">unsure - confirm on the scan</span>' : r.confidence === 'entered' ? '<br><span class="muted">typed at upload</span>' : '') + '</td><td>' + esc(r.limitText) + '</td><td>' + esc(r.page) + '</td><td>' +
         (r.check === 'UNREADABLE' && r.confidence === 'entered' ? '<span class="chip c-gray">NR (not recorded)</span>' : chip(CHECK_CHIP, r.check)) + (r.oot === 'Y' ? ' <span class="chip c-warn" title="' + esc(r.ootText) + '">Out of trend</span>' : '') + '</td>' +
         (qa ? '<td>' + (r.limitId ? '<button class="btn sm sec" onclick="correctResult(\'' + r.id + '\',\'' + esc(r.parameter).replace(/'/g, '') + '\',\'' + versionId + '\')">Correct</button>' : '') + '</td>' : '') + '</tr>';
     }).join('') + '</tbody></table></div>';
@@ -1375,7 +1379,7 @@ function importSummary(r) {
 }
 function drawAiStatus() {
   call('aiStatus').then(function (a) {
-    $('aist').innerHTML = '<span class="chip c-info">Values: ' + (a.valueSource === 'AI' ? 'read by AI' : 'typed at upload (free)') + '</span> ' + (a.keySet ? '<span class="chip c-ok">API key set</span>' : '<span class="chip c-gray">No API key</span>') + ' Scan model: <code>' + esc(a.model) + '</code> &middot; Queue: ' + a.jobs.PENDING + ' waiting, ' + a.jobs.SUBMITTED + ' being read, ' + a.jobs.DONE + ' done, ' + a.jobs.FAILED + ' failed' +
+    $('aist').innerHTML = '<span class="chip c-info">Values: ' + (a.valueSource === 'AI' ? 'read by AI' : 'typed at upload (free)') + '</span> ' + (a.keySet ? '<span class="chip c-ok">API key set</span>' : '<span class="chip c-gray">No API key</span>') + ' Scan model: <code>' + esc(a.model) + '</code>' + (a.model2 ? ' (second reading of doubtful scans: <code>' + esc(a.model2) + '</code>)' : '') + ' &middot; Queue: ' + a.jobs.PENDING + ' waiting, ' + a.jobs.SUBMITTED + ' being read, ' + a.jobs.DONE + ' done, ' + a.jobs.FAILED + ' failed' +
       ' &middot; Limits: ' + a.limits.approved + ' approved, ' + a.limits.draft + ' awaiting approval &middot; Tokens used: ' + Math.round(a.tokensIn / 1000) + 'k in / ' + Math.round(a.tokensOut / 1000) + 'k out' +
       (a.recentFailures.length ? '<br><span style="color:var(--bad)">Recent failures: ' + a.recentFailures.map(function (j) { return esc(j.error); }).join('; ') + '</span>' : '');
   }).catch(function () {});
