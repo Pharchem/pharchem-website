@@ -40,7 +40,7 @@ DEFAULT_SETTINGS.SCAN_SECOND_OPINION = ['YES', 'YES = when the first reading is 
 DEFAULT_SETTINGS.LIMITS_MODEL = ['claude-opus-5-5', 'Claude model for the one-time reading of limits from master documents'];
 DEFAULT_SETTINGS.GMP_SYNC_HOUR = ['6', 'Hour (IST, 0-23) at which the GMP folder is re-scanned daily and limits for new documents are read automatically; empty = off'];
 DEFAULT_SETTINGS.KEY_PARAMS_ONLY = ['YES', 'YES = the upload form asks only the key values below; NO = every approved numeric limit'];
-DEFAULT_SETTINGS.KEY_PARAMS_BMR = ['pH | Al2O3, claim | viscosity | free chlorine', 'BMR values Production types (groups separated by |, alternative words by commas). Only the LAST stage of each group is asked.'];
+DEFAULT_SETTINGS.KEY_PARAMS_BMR = ['pH | viscosity | free chlorine', 'BMR values read / typed (groups separated by |, alternative words by commas). Only the LAST stage of each group is used. Al2O3 content is checked on the COA, not the BMR.'];
 DEFAULT_SETTINGS.KEY_PARAMS_COA = ['pH | assay | chloride | neutraliz', 'COA values QC types (groups separated by |, alternative words by commas). Every matching test is asked.'];
 DEFAULT_SETTINGS.KEY_PARAMS_COA_LAKE = ['solid content | LOD, loss on drying', 'Extra COA values asked only for lake colour customers'];
 DEFAULT_SETTINGS.LAKE_COLOUR_CUSTOMERS = ['Koel, Akay, Dynemic, Roha, Neelikon', 'Customers that get lake colour grade (comma separated)'];
@@ -424,12 +424,13 @@ var SCAN_SCHEMA_ = {
   properties: {
     header: { type: 'object', additionalProperties: false,
       required: ['batchNo', 'batchSize', 'mfgDate', 'expiryDate', 'retestDate', 'sampleReceiptDate', 'analysisStartDate',
-        'analysisCompletedDate', 'reportDate', 'customer', 'challanNo', 'dispatchDate', 'dispatchQty'],
+        'analysisCompletedDate', 'reportDate', 'customer', 'challanNo', 'dispatchDate', 'dispatchQty', 'pagesPerIndex', 'missingPages'],
       properties: {
         batchNo: { type: 'string' }, batchSize: { type: 'string' }, mfgDate: { type: 'string' }, expiryDate: { type: 'string' },
         retestDate: { type: 'string' }, sampleReceiptDate: { type: 'string' }, analysisStartDate: { type: 'string' },
         analysisCompletedDate: { type: 'string' }, reportDate: { type: 'string' }, customer: { type: 'string' },
-        challanNo: { type: 'string' }, dispatchDate: { type: 'string' }, dispatchQty: { type: 'string' }
+        challanNo: { type: 'string' }, dispatchDate: { type: 'string' }, dispatchQty: { type: 'string' },
+        pagesPerIndex: { anyOf: [{ type: 'integer' }, { type: 'null' }] }, missingPages: { type: 'string' }
       } },
     values: { type: 'array', items: { type: 'object', additionalProperties: false,
       required: ['limitId', 'value', 'numericValue', 'page', 'confidence', 'found'],
@@ -522,6 +523,7 @@ function scanRequest_(job) {
     (list ? 'Read the recorded (actual) result for each of these parameters. Report one entry per limitId; if a parameter was recorded several times (e.g. re-checks), report the final recorded value and mention the others in observations:\n' + list
       : 'No approved limits exist yet for this document; leave "values" empty and report all recorded results in otherValues.') +
     '\n\nAlso fill the header from the document (dates as YYYY-MM-DD; empty string if not present) and list any other recorded numeric results in otherValues. ' +
+    'If the pages carry their own numbering such as "Page 3 of 21", set header.pagesPerIndex to that total (null if there is none) and list in header.missingPages the page numbers of that numbering that are absent from the upload (e.g. "1, 6, 16-21"; empty string if complete). ' +
     'In observations, report documentation problems you can see: blank fields or columns, missing signatures or dates, overwriting, unclear corrections, missing pages per the index, values that look inconsistent. Do not judge whether values meet limits - the system does that. ' +
     'Most serious first, at most 12 observations. These are NORMAL and must not be reported: the financial-year suffix after a batch number (e.g. "ALP/820 (26-27)" is batch ALP/820); ' +
     '"previous product" / "previous batch" entries on line-clearance, cleaning or dispensing records naming another batch; packing, labelling, sampling or dispatch dated after the completion of manufacturing; ' +
@@ -740,13 +742,21 @@ function storeScan_(versionId, data, job) {
     .forEach(function (r) { prior[r.limitId] = r; });
   updateMany_('Results', rows_('Results').filter(function (r) { return r.versionId === versionId && r.check !== 'SUPERSEDED'; })
     .map(function (r) { r.check = 'SUPERSEDED'; return r; }));
-  updateMany_('Findings', rows_('Findings').filter(function (f) { return f.versionId === versionId && f.type === 'AI_NOTE' && f.status === 'NOTE'; })
+  updateMany_('Findings', rows_('Findings').filter(function (f) { return f.versionId === versionId && ((f.type === 'AI_NOTE' && f.status === 'NOTE') || (f.type === 'PAGES' && f.status === 'OPEN')); })
     .map(function (f) { f.status = 'SUPERSEDED'; return f; }));
   var base = { versionId: versionId, docId: d.id, batchId: b.id, productCode: b.productCode, customer: b.customer, docType: d.type,
     correctedBy: '', correctionReason: '', createdAt: now, priorValue: '' };
   var out = [];
   // Header fields
   var h = data.header || {};
+  // The document's own page numbering ("Page x of N") versus what was uploaded: an incomplete scan is flagged for QA
+  // even though the uploader ticked "all pages present".
+  var perIndex = Number(h.pagesPerIndex) || 0, missing = String(h.missingPages || '').trim();
+  if (perIndex && (perIndex > Number(v.actualPages || 0) || missing)) {
+    addFinding_(versionId, 'PAGES', 'WARN', 'Upload looks incomplete: the document is numbered "of ' + perIndex + '" pages but ' + v.actualPages + ' page(s) were uploaded' +
+      (missing ? ' (not found: page ' + missing + ')' : '') + '. Reject for re-upload of the complete document, or justify if the numbering is misleading.', '');
+  }
+  delete h.pagesPerIndex; delete h.missingPages;
   Object.keys(h).forEach(function (k) {
     if (String(h[k] || '').trim()) {
       out.push(Object.assign({ id: newId_('RS'), parameter: k, stage: 'HEADER', value: String(h[k]), numValue: '', unit: '',
