@@ -522,7 +522,10 @@ function scanRequest_(job) {
     (list ? 'Read the recorded (actual) result for each of these parameters. Report one entry per limitId; if a parameter was recorded several times (e.g. re-checks), report the final recorded value and mention the others in observations:\n' + list
       : 'No approved limits exist yet for this document; leave "values" empty and report all recorded results in otherValues.') +
     '\n\nAlso fill the header from the document (dates as YYYY-MM-DD; empty string if not present) and list any other recorded numeric results in otherValues. ' +
-    'In observations, report documentation problems you can see: blank fields or columns, missing signatures or dates, overwriting, unclear corrections, missing pages per the index, values that look inconsistent. Do not judge whether values meet limits - the system does that.' +
+    'In observations, report documentation problems you can see: blank fields or columns, missing signatures or dates, overwriting, unclear corrections, missing pages per the index, values that look inconsistent. Do not judge whether values meet limits - the system does that. ' +
+    'Most serious first, at most 12 observations. These are NORMAL and must not be reported: the financial-year suffix after a batch number (e.g. "ALP/820 (26-27)" is batch ALP/820); ' +
+    '"previous product" / "previous batch" entries on line-clearance, cleaning or dispensing records naming another batch; packing, labelling, sampling or dispatch dated after the completion of manufacturing; ' +
+    '"NA" in a quantity-added or adjustment column when the measured value beside it is within its range; DEMO or training watermarks.' +
     (job.reading === '2' ? '\n\nThis is an independent second reading of a scan whose first reading was uncertain. Read every requested value digit by digit and report honestly what is written.' : '') });
   return baseParams_('high', SCAN_SCHEMA_,
     'You read scanned pharmaceutical batch records (handwritten Batch Manufacturing Records and typed Certificates of Analysis with raw data) for a QA checking system. ' +
@@ -950,7 +953,12 @@ function crossChecks_(b) {
   });
   var bmr = latest.BMR_BPR ? headerOf_(latest.BMR_BPR.id) : null;
   var coa = latest.COA_RAW ? headerOf_(latest.COA_RAW.id) : null;
-  var bn = function (s) { return String(s || '').toUpperCase().replace(/\s+/g, '').replace(/[()]/g, ''); };
+  // Batch numbers compare without spaces and without a financial-year suffix: "ALP/820 (26-27)" = "ALP/820" = "ALP/820/2026-27".
+  var bn = function (s) {
+    return String(s || '').toUpperCase().replace(/\s+/g, '')
+      .replace(/[(\[\/\-]+(20)?\d{2}-(20)?\d{2}[)\]]*$/, '')
+      .replace(/[()]/g, '');
+  };
   var kg = function (s) { var m = String(s || '').replace(/,/g, '').match(/(\d+(\.\d+)?)/); return m ? Number(m[1]) : null; };
   var checks = [];
   [['BMR_BPR', bmr, 'BMR'], ['COA_RAW', coa, 'COA']].forEach(function (x) {

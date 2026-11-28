@@ -893,6 +893,21 @@ function loadChecks(versionId, el, qa) {
   return call('getChecks', { versionId: versionId }).then(function (c) { renderChecks($(el), c, versionId, qa); })
     .catch(function (e) { $(el).innerHTML = '<div class="err">' + esc(e.message) + '</div>'; });
 }
+/** The reading's remarks: Critical / Major shown one per line, Minor ones folded away (QA reviews the scan anyway). */
+function aiNoteHtml(text) {
+  var i = text.indexOf(': ');
+  if (i < 0) return esc(text);
+  var head = text.slice(0, i), items = text.slice(i + 2).split(' | ');
+  var line = function (t) {
+    var m = t.match(/^(p\.\S+) \[(Critical|Major|Minor)\] ([\s\S]*)$/);
+    if (!m) return '<div>' + esc(t) + '</div>';
+    var cls = m[2] === 'Critical' ? 'c-bad' : m[2] === 'Major' ? 'c-warn' : 'c-gray';
+    return '<div style="margin-top:3px"><span class="chip ' + cls + '">' + m[2] + '</span> <span class="muted">' + esc(m[1]) + '</span> ' + esc(m[3]) + '</div>';
+  };
+  var major = items.filter(function (t) { return !/\[Minor\]/.test(t); }), minor = items.filter(function (t) { return /\[Minor\]/.test(t); });
+  return esc(head) + ':' + major.map(line).join('') +
+    (minor.length ? '<details style="margin-top:4px"><summary class="muted">' + minor.length + ' minor remark(s)</summary>' + minor.map(line).join('') + '</details>' : '');
+}
 function renderChecks(box, c, versionId, qa) {
   if (!c.job && !c.results.length && !c.findings.length) { box.innerHTML = '<p class="small muted">No values were recorded for this version (no approved limits at upload time). Verify all values manually.</p>'; return; }
   var html = '';
@@ -906,7 +921,7 @@ function renderChecks(box, c, versionId, qa) {
   var open = c.findings.filter(function (f) { return f.status === 'OPEN'; });
   var done = c.findings.filter(function (f) { return f.status === 'RESOLVED'; });
   c.findings.filter(function (f) { return f.status === 'NOTE'; }).forEach(function (f) {
-    html += '<div class="small" style="padding:7px 10px;margin-bottom:8px;border:1px solid var(--line);border-radius:8px;background:var(--grayb)"><span class="chip c-gray">Note</span> ' + esc(f.text) + '</div>';
+    html += '<div class="small" style="padding:7px 10px;margin-bottom:8px;border:1px solid var(--line);border-radius:8px;background:var(--grayb)"><span class="chip c-gray">Note</span> ' + (f.type === 'AI_NOTE' ? aiNoteHtml(f.text) : esc(f.text)) + '</div>';
   });
   if (open.length) {
     html += '<div style="border:1px solid var(--line);border-radius:8px;margin-bottom:8px">' + open.map(function (f) {
